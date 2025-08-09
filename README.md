@@ -4,17 +4,14 @@ Decentralized, rate-limited auto-discovery and bootstrap for [iroh-gossip](https
 backed by the BitTorrent mainline DHT and rotating shared secrets.
 No centralized components.
 
-- Zero servers. Uses public DHT + encrypted payloads.
-- Deterministic, per-minute discovery keys.
-- Rate-limited publishing to reduce DHT load.
-- Bubble detection and merging to heal partitions.
+Next iteration of the [iroh-topic-tracker](https://github.com/rustonbsd/iroh-topic-tracker).
 
 Links:
-- Protocol details (spec): PROTOCOL.md
-- Architecture (illustrative): ARCHITECTURE.md
+- Protocol details (spec): [PROTOCOL.md](/PROTOCOL.md)
+- Architecture (illustrative): [ARCHITECTURE.md](/ARCHITECTURE.md)
 - Feedback issue: https://github.com/rustonbsd/distributed-topic-tracker-exp/issues/5
 
-Status: preparing for production. API may evolve; protocol is defined.
+Status: protocol is defined. lib is working. now: testing. next: preparing for production. 
 
 ## Features
 
@@ -111,42 +108,6 @@ async fn main() -> Result<()> {
 }
 ```
 
-## Configuration (defaults)
-
-- DHT get timeout: 10 s
-- Publish retries: 3 attempts
-- Retry jitter: 0–2000 ms
-- Per-minute record cap: 10 (MAX_BOOTSTRAP_RECORDS)
-- Join pacing: 100 ms between attempts, 500 ms final wait
-- Publisher backoff: 1–60 s (exponential), success jitter: 0–60 s
-- Bubble detection:
-  - Small cluster: fewer than 4 neighbors
-  - Message overlap: non-overlapping recent message hashes
-
-See PROTOCOL.md for exact procedures.
-
-## Security model (summary)
-
-- Public discovery index: deterministic, per-minute Ed25519 keypair derived
-  from topic and time.
-- Content confidentiality: records encrypted using a key derived from a
-  rotating shared secret.
-- Authentication and integrity: records signed by publisher's node key.
-- Replay and access control: per-minute binding and secret rotation.
-
-Details: PROTOCOL.md.
-
-## Architecture
-
-- Bootstrap loop queries DHT, decrypts, verifies, and connects to discovered
-  peers with pacing.
-- Publisher runs in the background post-join to publish activity and merge
-  bubbles.
-- Records encode topic, time window, publisher, active peers, and recent
-  message proofs.
-
-See ARCHITECTURE.md for diagrams and flows.
-
 ## Testing
 
 ### Unit Tests
@@ -166,10 +127,11 @@ The e2e test verifies that multiple nodes can discover each other through the DH
 
 ## Roadmap
 
-- Finalize crate name and publish to crates.io
-- Doc tests and examples
-- Optimize configuration settings
-- Add more examples
+- [x] Finalize crate name and publish to crates.io
+- [x] Tests and CI
+- [ ] Docs (api)
+- [ ] Optimize configuration settings
+- [ ] Add more examples
 
 ## Contributing
 
