@@ -30,9 +30,12 @@ Add dependencies (names subject to final crate publish):
 
 ```toml
 [dependencies]
+anyhow = "1"
+tokio = "1"
 iroh = "*"
 iroh-gossip = "*"
-distributed-topic-tracker = { git = "https://github.com/rustonbsd/distributed-topic-tracker", branch = "main" }
+
+distributed-topic-tracker = "0.1.1"
 ```
 
 Minimal example:
