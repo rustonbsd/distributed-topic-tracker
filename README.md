@@ -133,10 +133,24 @@ The e2e test verifies that multiple nodes can discover each other through the DH
 - [ ] Optimize configuration settings
 - [ ] Add more examples
 
+## License
+
+This project is licensed under either of
+
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE.txt) or
+  <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT.txt) or
+  <http://opensource.org/licenses/MIT>)
+
+at your option.
+
 ## Contributing
 
 - Try it, then drop feedback:
   https://github.com/rustonbsd/distributed-topic-tracker-exp/issues/5
 - PRs, issue and success reports welcome.
 
-License: to be added (e.g., MIT/Apache-2.0).
+Unless explicitly stated, any contribution intentionally submitted for
+inclusion in this project shall be dual-licensed as above, without any
+additional terms or conditions.
+
