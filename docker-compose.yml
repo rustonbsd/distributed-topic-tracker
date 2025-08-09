@@ -1,0 +1,30 @@
+services:
+  node1:
+    build: .
+    container_name: dtt-node1
+    environment:
+      - RUST_LOG=info
+    command: >
+      sh -c "echo 'Starting node1...' && 
+             sleep 2 && 
+             e2e_test"
+
+  node2:
+    build: .
+    container_name: dtt-node2
+    environment:
+      - RUST_LOG=info
+    command: >
+      sh -c "echo 'Starting node2...' && 
+             sleep 5 && 
+             e2e_test"
+
+  node3:
+    build: .
+    container_name: dtt-node3
+    environment:
+      - RUST_LOG=info
+    command: >
+      sh -c "echo 'Starting node3...' && 
+             sleep 8 && 
+             e2e_test"

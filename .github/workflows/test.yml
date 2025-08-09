@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+
+  # always on pullrequest
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: docker build -t distributed-topic-tracker .
+    
+    - name: Run end-to-end test
+      run: ./test-e2e.sh
+
