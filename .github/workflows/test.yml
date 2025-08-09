@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [ main, lib-testing ]
+    branches: [ main ]
 
   # always on pullrequest
   pull_request:
