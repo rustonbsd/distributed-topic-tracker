@@ -1,5 +1,10 @@
 # distributed-topic-tracker
 
+
+[![Crates.io](https://img.shields.io/crates/v/distributed-topic-tracker.svg)](https://crates.io/crates/distributed-topic-tracker)
+[![Docs.rs](https://docs.rs/distributed-topic-tracker/badge.svg)](https://docs.rs/distributed-topic-tracker)
+
+
 Decentralized, rate-limited auto-discovery and bootstrap for [iroh-gossip](https://github.com/n0-computer/iroh-gossip),
 backed by the BitTorrent mainline DHT and rotating shared secrets.
 No centralized components.
