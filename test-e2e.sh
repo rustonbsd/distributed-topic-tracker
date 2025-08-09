@@ -23,7 +23,7 @@ check_joined_topic() {
     echo "Waiting for $container_name to join topic..."
     
     while [ $count -lt $timeout ]; do
-        if docker logs $container_name 2>&1 | grep -q "Joined topic"; then
+        if docker logs $container_name 2>&1 | grep -q "[joined topic]"; then
             echo "$container_name successfully joined topic"
             return 0
         fi

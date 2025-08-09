@@ -37,8 +37,10 @@ async fn main() -> Result<()> {
         .subscribe_and_join_with_auto_discovery(topic_id, &initial_secret)
         .await?;
 
+    // print "[joined topic]" to stdout in success case
+    println!("[joined topic]");
+
     // successfully joined
     // exit with code 0
-
     Ok(())
 }
