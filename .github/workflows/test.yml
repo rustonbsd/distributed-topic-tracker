@@ -3,8 +3,11 @@ name: Tests
 on:
   push:
     branches: [ main, lib-testing ]
+
+  # always on pullrequest
   pull_request:
-    branches: [ main ]
+    types: [opened, synchronize, reopened, edited]
+
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,7 +16,7 @@ jobs:
   e2e-tests:
     name: End-to-End Tests
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
     
