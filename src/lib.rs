@@ -282,7 +282,7 @@ impl GossipSender {
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
         let (tx, mut rx) = tokio::sync::broadcast::channel::<bool>(1);
         self.action_req
-            .send(InnerActionSend::ReqSend(data, tx))
+            .send(InnerActionSend::ReqSend(data, tx.clone()))
             .expect("broadcast failed");
 
         match rx.recv().await {
@@ -305,7 +305,7 @@ impl GossipSender {
 
         let (tx, mut rx) = tokio::sync::broadcast::channel::<bool>(1);
         self.action_req
-            .send(InnerActionSend::ReqJoinPeers(peers, tx))
+            .send(InnerActionSend::ReqJoinPeers(peers, tx.clone()))
             .expect("broadcast failed");
 
         match rx.recv().await {
@@ -399,7 +399,7 @@ impl GossipReceiver {
     pub async fn is_joined(&mut self) -> bool {
         let (is_joined_tx, mut is_joined_rx) = tokio::sync::broadcast::channel::<bool>(1);
         self.action_req
-            .send(InnerActionRecv::ReqIsJoined(is_joined_tx))
+            .send(InnerActionRecv::ReqIsJoined(is_joined_tx.clone()))
             .expect("broadcast failed");
         match is_joined_rx.recv().await {
             Ok(is_joined) => is_joined,
