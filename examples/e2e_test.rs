@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
 
     // Split into sink (sending) and stream (receiving)
     gossip
-        .subscribe_and_join_with_auto_discovery(topic_id, &initial_secret)
+        .subscribe_and_join_with_auto_discovery(topic_id, initial_secret)
         .await?;
 
     // print "[joined topic]" to stdout in success case

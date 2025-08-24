@@ -437,6 +437,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         gossip: iroh_gossip::net::Gossip,
         initial_secret: &Vec<u8>,
         secret_rotation_function: Option<R>,
+        async_bootstrap: bool,
     ) -> Result<Self> {
         // Create secret_hash
         let mut initial_secret_hash = sha2::Sha512::new();
@@ -446,7 +447,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             .expect("hashing failed");
 
         // Bootstrap to get gossip tx/rx
-        let (gossip_tx, gossip_rx) = Self::bootstrap_no_wait(
+        let (gossip_tx, gossip_rx) = if async_bootstrap { Self::bootstrap_no_wait(
             topic_id.clone(),
             endpoint,
             node_signing_key,
@@ -454,7 +455,18 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             initial_secret_hash,
             secret_rotation_function.clone(),
         )
-        .await?;
+        .await?
+        } else {
+            Self::bootstrap(
+                        topic_id.clone(),
+                        endpoint,
+                        node_signing_key,
+                        gossip,
+                        initial_secret_hash,
+                        secret_rotation_function.clone(),
+                    )
+                    .await?
+        };
 
         // Spawn publisher
         let _join_handler = Self::spawn_publisher(
@@ -1097,6 +1109,13 @@ pub trait AutoDiscoveryGossip<R: SecretRotation + Default + Clone + Send + 'stat
         topic_id: TopicId,
         initial_secret: Vec<u8>,
     ) -> Result<Topic<R>>;
+
+    #[allow(async_fn_in_trait)]
+    async fn subscribe_and_join_with_auto_discovery_no_wait(
+        &self,
+        topic_id: TopicId,
+        initial_secret: Vec<u8>,
+    ) -> Result<Topic<R>>;
 }
 
 // Default secret rotation function
@@ -1125,9 +1144,28 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> AutoDiscoveryGossip<R
             self.gossip.clone(),
             &initial_secret,
             Some(self.secret_rotation_function.clone()),
+            false,
         )
         .await
     }
+    
+    async fn subscribe_and_join_with_auto_discovery_no_wait(
+        &self,
+        topic_id: TopicId,
+        initial_secret: Vec<u8>,
+    ) -> Result<Topic<R>> {
+        Topic::new(
+            topic_id,
+            &self.endpoint,
+            self.endpoint.secret_key().secret(),
+            self.gossip.clone(),
+            &initial_secret,
+            Some(self.secret_rotation_function.clone()),
+            true,
+        )
+        .await
+    }
+    
 }
 
 impl SecretRotation for DefaultSecretRotation {
