@@ -79,25 +79,25 @@ pub struct TopicId {
 #[derive(Debug, Clone)]
 pub struct GossipReceiver {
     gossip_event_forwarder: tokio::sync::broadcast::Sender<iroh_gossip::api::Event>,
-    action_req: tokio::sync::broadcast::Sender<InnerActionRecv>,
+    action_req: tokio::sync::mpsc::Sender<InnerActionRecv>,
     last_message_hashes: Vec<[u8; 32]>,
 }
 
 #[derive(Debug, Clone)]
 pub struct GossipSender {
-    action_req: tokio::sync::broadcast::Sender<InnerActionSend>,
+    action_req: tokio::sync::mpsc::Sender<InnerActionSend>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum InnerActionRecv {
-    ReqNeighbors(tokio::sync::broadcast::Sender<HashSet<iroh::NodeId>>),
-    ReqIsJoined(tokio::sync::broadcast::Sender<bool>),
+    ReqNeighbors(tokio::sync::oneshot::Sender<HashSet<iroh::NodeId>>),
+    ReqIsJoined(tokio::sync::oneshot::Sender<bool>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum InnerActionSend {
-    ReqSend(Vec<u8>, tokio::sync::broadcast::Sender<bool>),
-    ReqJoinPeers(Vec<iroh::NodeId>, tokio::sync::broadcast::Sender<bool>),
+    ReqSend(Vec<u8>, tokio::sync::oneshot::Sender<bool>),
+    ReqJoinPeers(Vec<iroh::NodeId>, tokio::sync::oneshot::Sender<bool>),
 }
 
 impl EncryptedRecord {
@@ -254,12 +254,12 @@ impl Record {
 impl GossipSender {
     pub fn new(gossip_sender: iroh_gossip::api::GossipSender) -> Self {
         let (action_req_tx, mut action_req_rx) =
-            tokio::sync::broadcast::channel::<InnerActionSend>(1024);
+            tokio::sync::mpsc::channel::<InnerActionSend>(1024);
 
         tokio::spawn({
             let gossip_sender = gossip_sender;
             async move {
-                while let Ok(inner_action) = action_req_rx.recv().await {
+                while let Some(inner_action) = action_req_rx.recv().await {
                     match inner_action {
                         InnerActionSend::ReqSend(data, tx) => {
                             let res = gossip_sender.broadcast(data.into()).await;
@@ -280,12 +280,12 @@ impl GossipSender {
     }
 
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
-        let (tx, mut rx) = tokio::sync::broadcast::channel::<bool>(1);
+        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
         self.action_req
-            .send(InnerActionSend::ReqSend(data, tx.clone()))
-            .expect("broadcast failed");
+            .send(InnerActionSend::ReqSend(data, tx))
+            .await;
 
-        match rx.recv().await {
+        match rx.await {
             Ok(true) => Ok(()),
             Ok(false) => bail!("broadcast failed"),
             Err(_) => panic!("broadcast failed"),
@@ -303,12 +303,12 @@ impl GossipSender {
             peers.truncate(max_peers);
         }
 
-        let (tx, mut rx) = tokio::sync::broadcast::channel::<bool>(1);
-        self.action_req
-            .send(InnerActionSend::ReqJoinPeers(peers, tx.clone()))
-            .expect("broadcast failed");
+        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+        let _ = self.action_req
+            .send(InnerActionSend::ReqJoinPeers(peers, tx))
+            .await;
 
-        match rx.recv().await {
+        match rx.await {
             Ok(true) => Ok(()),
             Ok(false) => bail!("join peers failed"),
             Err(_) => panic!("broadcast failed"),
@@ -321,13 +321,7 @@ impl GossipReceiver {
         let (gossip_forward_tx, mut gossip_forward_rx) =
             tokio::sync::broadcast::channel::<iroh_gossip::api::Event>(1024);
         let (action_req_tx, mut action_req_rx) =
-            tokio::sync::broadcast::channel::<InnerActionRecv>(1024);
-
-        tokio::spawn({
-            let action_req_tx = action_req_tx.clone();
-            async move { while action_req_tx.subscribe().recv().await.is_ok() {} }
-        });
-        tokio::spawn(async move { while gossip_forward_rx.recv().await.is_ok() {} });
+            tokio::sync::mpsc::channel::<InnerActionRecv>(1024);
 
         let self_ref = Self {
             gossip_event_forwarder: gossip_forward_tx.clone(),
@@ -340,7 +334,7 @@ impl GossipReceiver {
                 let mut gossip_receiver = gossip_receiver;
                 loop {
                     tokio::select! {
-                        Ok(inner_action) = action_req_rx.recv() => {
+                        Some(inner_action) = action_req_rx.recv() => {
                             match inner_action {
                                 InnerActionRecv::ReqNeighbors(tx) => {
                                     let neighbors = gossip_receiver.neighbors().collect::<HashSet<iroh::NodeId>>();
@@ -363,7 +357,7 @@ impl GossipReceiver {
                                         }
                                     }
                                 }
-                                self_ref.gossip_event_forwarder.send(gossip_event).expect("broadcast failed");
+                                let _ = self_ref.gossip_event_forwarder.send(gossip_event);
                             } else {
                                 break;
                             }
@@ -377,47 +371,35 @@ impl GossipReceiver {
     }
 
     pub async fn neighbors(&mut self) -> HashSet<iroh::NodeId> {
-        let (neighbors_tx, mut neighbors_rx) =
-            tokio::sync::broadcast::channel::<HashSet<iroh::NodeId>>(1);
-        tokio::spawn({
-            let action_req = self.action_req.clone();
-            let neighbors_tx = neighbors_tx.clone();
-            async move {
-                action_req
-                    .send(InnerActionRecv::ReqNeighbors(neighbors_tx))
-                    .expect("broadcast failed");
-                sleep(Duration::from_millis(10)).await;
-            }
-        });
+        let (neighbors_tx, neighbors_rx) = tokio::sync::oneshot::channel::<HashSet<iroh::NodeId>>();
 
-        match neighbors_rx.recv().await {
+        let _ = self
+            .action_req
+            .send(InnerActionRecv::ReqNeighbors(neighbors_tx))
+            .await;
+
+        match neighbors_rx.await {
             Ok(neighbors) => neighbors,
             Err(_) => panic!("broadcast failed"),
         }
     }
 
     pub async fn is_joined(&mut self) -> bool {
-        let (is_joined_tx, mut is_joined_rx) = tokio::sync::broadcast::channel::<bool>(1);
-        tokio::spawn({
-            let action_req = self.action_req.clone();
-            async move {
-            action_req
-            .send(InnerActionRecv::ReqIsJoined(is_joined_tx.clone()))
-            .expect("broadcast failed");
-            sleep(Duration::from_millis(10)).await;
-        }});
-        match is_joined_rx.recv().await {
+        let (is_joined_tx, is_joined_rx) = tokio::sync::oneshot::channel::<bool>();
+
+        let _ = self
+            .action_req
+            .send(InnerActionRecv::ReqIsJoined(is_joined_tx))
+            .await;
+
+        match is_joined_rx.await {
             Ok(is_joined) => is_joined,
             Err(_) => panic!("broadcast failed"),
         }
     }
 
-    pub async fn recv(&mut self) -> Result<Event> {
-        self.gossip_event_forwarder.clone()
-            .subscribe()
-            .recv()
-            .await
-            .map_err(|err| anyhow::anyhow!(err))
+    pub async fn subscribe(&mut self) -> Result<tokio::sync::broadcast::Receiver<Event>> {
+        Ok(self.gossip_event_forwarder.subscribe())
     }
 
     pub fn last_message_hashes(&self) -> Vec<[u8; 32]> {

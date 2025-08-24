@@ -38,6 +38,7 @@ async fn main() -> Result<()> {
         .await?.split();
 
     tokio::spawn(async move {
+        let mut rx = rx.subscribe().await.unwrap();
         while let Ok(event) = rx.recv().await {
             println!("{event:?}");
         }
