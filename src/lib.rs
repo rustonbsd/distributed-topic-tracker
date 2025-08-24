@@ -659,7 +659,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             // Collect node ids from active_peers and record.node_id (of publisher)
             let bootstrap_nodes = records
                 .iter()
-                .map(|record| {
+                .flat_map(|record| {
                     let mut v = vec![record.node_id];
                     for peer in record.active_peers {
                         if peer != [0; 32] {
@@ -668,7 +668,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                     }
                     v
                 })
-                .filter_map(|node_id| iroh::NodeId::from_bytes(&node_id.as_slice()[0]).ok())
+                .filter_map(|node_id| iroh::NodeId::from_bytes(&node_id).ok())
                 .collect::<HashSet<_>>();
 
             println!("we found records: {bootstrap_nodes:?}");
