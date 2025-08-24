@@ -323,6 +323,10 @@ impl GossipReceiver {
         let (action_req_tx, mut action_req_rx) =
             tokio::sync::broadcast::channel::<InnerActionRecv>(1024);
 
+        tokio::spawn({
+            let action_req_tx = action_req_tx.clone();
+            async move { while action_req_tx.subscribe().recv().await.is_ok() {} }
+        });
         tokio::spawn(async move { while gossip_forward_rx.recv().await.is_ok() {} });
 
         let self_ref = Self {
@@ -447,25 +451,26 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             .expect("hashing failed");
 
         // Bootstrap to get gossip tx/rx
-        let (gossip_tx, gossip_rx) = if async_bootstrap { Self::bootstrap_no_wait(
-            topic_id.clone(),
-            endpoint,
-            node_signing_key,
-            gossip,
-            initial_secret_hash,
-            secret_rotation_function.clone(),
-        )
-        .await?
+        let (gossip_tx, gossip_rx) = if async_bootstrap {
+            Self::bootstrap_no_wait(
+                topic_id.clone(),
+                endpoint,
+                node_signing_key,
+                gossip,
+                initial_secret_hash,
+                secret_rotation_function.clone(),
+            )
+            .await?
         } else {
             Self::bootstrap(
-                        topic_id.clone(),
-                        endpoint,
-                        node_signing_key,
-                        gossip,
-                        initial_secret_hash,
-                        secret_rotation_function.clone(),
-                    )
-                    .await?
+                topic_id.clone(),
+                endpoint,
+                node_signing_key,
+                gossip,
+                initial_secret_hash,
+                secret_rotation_function.clone(),
+            )
+            .await?
         };
 
         // Spawn publisher
@@ -1148,7 +1153,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> AutoDiscoveryGossip<R
         )
         .await
     }
-    
+
     async fn subscribe_and_join_with_auto_discovery_no_wait(
         &self,
         topic_id: TopicId,
@@ -1165,7 +1170,6 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> AutoDiscoveryGossip<R
         )
         .await
     }
-    
 }
 
 impl SecretRotation for DefaultSecretRotation {

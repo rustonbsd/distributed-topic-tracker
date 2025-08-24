@@ -33,12 +33,27 @@ async fn main() -> Result<()> {
     let initial_secret = b"my-initial-secret".to_vec();
 
     // Split into sink (sending) and stream (receiving)
-    gossip
+    let (tx,mut rx) = gossip
         .subscribe_and_join_with_auto_discovery(topic_id, initial_secret)
-        .await?;
+        .await?.split();
+
+    tokio::spawn(async move {
+        while let Ok(event) = rx.recv().await {
+            println!("{event:?}");
+        }
+    });
+
+
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    tx.broadcast(format!("hi from {}",endpoint.node_id()).into()).await?;
+
 
     // print "[joined topic]" to stdout in success case
     println!("[joined topic]");
+
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
+    println!("[finished]");
 
     // successfully joined
     // exit with code 0
