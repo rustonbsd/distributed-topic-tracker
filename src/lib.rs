@@ -397,12 +397,12 @@ impl GossipReceiver {
     }
 
     pub async fn is_joined(&mut self) -> bool {
-        let (n_tx, mut n_rx) = tokio::sync::broadcast::channel::<HashSet<iroh::NodeId>>(1);
+        let (is_joined_tx, mut is_joined_rx) = tokio::sync::broadcast::channel::<bool>(1);
         self.action_req
-            .send(InnerActionRecv::ReqNeighbors(n_tx.clone()))
+            .send(InnerActionRecv::ReqIsJoined(is_joined_tx.clone()))
             .expect("broadcast failed");
-        match n_rx.recv().await {
-            Ok(hs) => !hs.is_empty(),
+        match is_joined_rx.recv().await {
+            Ok(is_joined) => is_joined,
             Err(_) => panic!("broadcast failed"),
         }
     }
@@ -548,6 +548,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             GossipReceiver::new(gossip_receiver),
         );
 
+        /*
         tokio::spawn({
             let gossip_sender = gossip_sender.clone();
             let gossip_receiver = gossip_receiver.clone();
@@ -565,7 +566,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 )
                 .await
             }
-        });
+        });*/
 
         Ok((gossip_sender, gossip_receiver))
     }
