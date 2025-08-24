@@ -446,7 +446,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             .expect("hashing failed");
 
         // Bootstrap to get gossip tx/rx
-        let (gossip_tx, gossip_rx) = Self::bootstrap(
+        let (gossip_tx, gossip_rx) = Self::bootstrap_no_wait(
             topic_id.clone(),
             endpoint,
             node_signing_key,
