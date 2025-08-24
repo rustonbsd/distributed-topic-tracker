@@ -338,11 +338,11 @@ impl GossipReceiver {
                             match inner_action {
                                 InnerActionRecv::ReqNeighbors(tx) => {
                                     let neighbors = gossip_receiver.neighbors().collect::<HashSet<iroh::NodeId>>();
-                                    tx.send(neighbors).expect("broadcast failed");
+                                    let _ = tx.send(neighbors);
                                 },
                                 InnerActionRecv::ReqIsJoined(tx) => {
                                     let is_joined = gossip_receiver.is_joined();
-                                    tx.send(is_joined).expect("broadcast failed");
+                                    let _ = tx.send(is_joined);
                                 }
                             }
                         }
