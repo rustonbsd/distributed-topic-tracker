@@ -370,7 +370,7 @@ impl GossipReceiver {
         self_ref
     }
 
-    pub async fn neighbors(&mut self) -> HashSet<iroh::NodeId> {
+    pub async fn neighbors(&mut self) -> Result<HashSet<iroh::NodeId>> {
         let (neighbors_tx, neighbors_rx) = tokio::sync::oneshot::channel::<HashSet<iroh::NodeId>>();
 
         let _ = self
@@ -378,13 +378,10 @@ impl GossipReceiver {
             .send(InnerActionRecv::ReqNeighbors(neighbors_tx))
             .await;
 
-        match neighbors_rx.await {
-            Ok(neighbors) => neighbors,
-            Err(_) => panic!("broadcast failed"),
-        }
+        neighbors_rx.await.map_err(|err| anyhow::anyhow!(err))
     }
 
-    pub async fn is_joined(&mut self) -> bool {
+    pub async fn is_joined(&mut self) -> Result<bool> {
         let (is_joined_tx, is_joined_rx) = tokio::sync::oneshot::channel::<bool>();
 
         let _ = self
@@ -392,10 +389,7 @@ impl GossipReceiver {
             .send(InnerActionRecv::ReqIsJoined(is_joined_tx))
             .await;
 
-        match is_joined_rx.await {
-            Ok(is_joined) => is_joined,
-            Err(_) => panic!("broadcast failed"),
-        }
+        is_joined_rx.await.map_err(|err| anyhow::anyhow!(err))
     }
 
     pub async fn subscribe(&mut self) -> Result<tokio::sync::broadcast::Receiver<Event>> {
@@ -598,7 +592,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         let mut last_published_unix_minute = 0;
         loop {
             // Check if we are connected to at least one node
-            if gossip_receiver.is_joined().await {
+            if let Ok(joined) = gossip_receiver.is_joined().await {
                 return Ok((gossip_sender, gossip_receiver));
             }
 
@@ -664,7 +658,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             // Maybe in the meantime someone connected to us via one of our published records
             // we don't want to disrup the gossip rotations any more then we have to
             // so we check again before joining new peers
-            if gossip_receiver.is_joined().await {
+            if let Ok(joined) = gossip_receiver.is_joined().await {
                 return Ok((gossip_sender, gossip_receiver));
             }
 
@@ -675,7 +669,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                     Ok(_) => {
                         println!("trying to join {:?}", gossip_receiver.neighbors().await);
                         sleep(Duration::from_millis(100)).await;
-                        if gossip_receiver.is_joined().await {
+                        if let Ok(joined) = gossip_receiver.is_joined().await {
                             break;
                         }
                     }
@@ -687,13 +681,17 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
 
             // If we are still not connected to anyone:
             // give it the default iroh-gossip connection timeout before the final is_joined() check
-            if !gossip_receiver.is_joined().await {
-                sleep(Duration::from_millis(500)).await;
+            if let Ok(joined) = gossip_receiver.is_joined().await {
+                if !joined {
+                    sleep(Duration::from_millis(500)).await;
+                }
             }
 
             // If we are connected: return
-            if gossip_receiver.is_joined().await {
-                return Ok((gossip_sender, gossip_receiver));
+            if let Ok(joined) = gossip_receiver.is_joined().await {
+                if joined {
+                    return Ok((gossip_sender, gossip_receiver));
+                }
             } else {
                 // If we are not connected: check if we should publish a record this minute
                 if unix_minute != last_published_unix_minute
@@ -821,13 +819,13 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                     initial_secret_hash,
                     node_id,
                     &node_signing_key,
-                    gossip_receiver.neighbors().await,
+                     gossip_receiver.neighbors().await.unwrap_or_default(),
                     gossip_receiver.last_message_hashes(),
                 )
                 .await
                 {
                     // Cluster size as bubble indicator
-                    let neighbors = gossip_receiver.neighbors().await;
+                    let neighbors = gossip_receiver.neighbors().await.unwrap_or_default();
                     if neighbors.len() < 4 && !records.is_empty() {
                         let node_ids = records
                             .iter()
