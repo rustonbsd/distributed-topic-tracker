@@ -398,9 +398,13 @@ impl GossipReceiver {
 
     pub async fn is_joined(&mut self) -> bool {
         let (is_joined_tx, mut is_joined_rx) = tokio::sync::broadcast::channel::<bool>(1);
-        self.action_req
+        tokio::spawn({
+            let action_req = self.action_req.clone();
+            async move {
+            action_req
             .send(InnerActionRecv::ReqIsJoined(is_joined_tx.clone()))
             .expect("broadcast failed");
+        }});
         match is_joined_rx.recv().await {
             Ok(is_joined) => is_joined,
             Err(_) => panic!("broadcast failed"),
