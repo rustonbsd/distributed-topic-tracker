@@ -655,6 +655,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             }
 
             // We found records
+            println!("we found records: {records:?}");
 
             // Collect node ids from active_peers and record.node_id (of publisher)
             let bootstrap_nodes = records
