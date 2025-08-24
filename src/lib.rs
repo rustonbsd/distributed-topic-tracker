@@ -330,8 +330,8 @@ impl GossipReceiver {
         tokio::spawn(async move { while gossip_forward_rx.recv().await.is_ok() {} });
 
         let self_ref = Self {
-            gossip_event_forwarder: gossip_forward_tx,
-            action_req: action_req_tx,
+            gossip_event_forwarder: gossip_forward_tx.clone(),
+            action_req: action_req_tx.clone(),
             last_message_hashes: vec![],
         };
         tokio::spawn({
