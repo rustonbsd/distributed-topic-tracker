@@ -655,7 +655,6 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             }
 
             // We found records
-            println!("we found records: {records:?}");
 
             // Collect node ids from active_peers and record.node_id (of publisher)
             let bootstrap_nodes = records
@@ -671,6 +670,8 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 })
                 .filter_map(|node_id| iroh::NodeId::from_bytes(&node_id.as_slice()[0]).ok())
                 .collect::<HashSet<_>>();
+
+            println!("we found records: {bootstrap_nodes:?}");
 
             // Maybe in the meantime someone connected to us via one of our published records
             // we don't want to disrup the gossip rotations any more then we have to
