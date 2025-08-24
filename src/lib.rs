@@ -404,6 +404,7 @@ impl GossipReceiver {
             action_req
             .send(InnerActionRecv::ReqIsJoined(is_joined_tx.clone()))
             .expect("broadcast failed");
+            sleep(Duration::from_millis(10)).await;
         }});
         match is_joined_rx.recv().await {
             Ok(is_joined) => is_joined,
