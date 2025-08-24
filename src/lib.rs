@@ -275,7 +275,7 @@ impl GossipSender {
         });
 
         Self {
-            action_req: action_req_tx,
+            action_req: action_req_tx.clone(),
         }
     }
 
@@ -348,7 +348,6 @@ impl GossipReceiver {
                                 },
                                 InnerActionRecv::ReqIsJoined(tx) => {
                                     let is_joined = gossip_receiver.is_joined();
-                                    println!("is_joined: {is_joined}");
                                     tx.send(is_joined).expect("broadcast failed");
                                 }
                             }
@@ -686,7 +685,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             for node_id in bootstrap_nodes.iter() {
                 match gossip_sender.join_peers(vec![*node_id], None).await {
                     Ok(_) => {
-                        println!("trying to join {}", node_id.to_string());
+                        println!("trying to join {}", node_id);
                         sleep(Duration::from_millis(100)).await;
                         if gossip_receiver.is_joined().await {
                             break;
