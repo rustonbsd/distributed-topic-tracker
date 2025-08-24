@@ -381,6 +381,7 @@ impl GossipReceiver {
             tokio::sync::broadcast::channel::<HashSet<iroh::NodeId>>(1);
         tokio::spawn({
             let action_req = self.action_req.clone();
+            let neighbors_tx = neighbors_tx.clone();
             async move {
                 action_req
                     .send(InnerActionRecv::ReqNeighbors(neighbors_tx))
