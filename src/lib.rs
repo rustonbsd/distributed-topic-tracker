@@ -267,7 +267,6 @@ impl GossipSender {
                         }
                         InnerActionSend::ReqJoinPeers(peers, tx) => {
                             let res = gossip_sender.join_peers(peers).await;
-                            println!("join-peers-res: {res:?}");
                             tx.send(res.is_ok()).expect("broadcast failed");
                         }
                     }
@@ -349,6 +348,7 @@ impl GossipReceiver {
                                 },
                                 InnerActionRecv::ReqIsJoined(tx) => {
                                     let is_joined = gossip_receiver.is_joined();
+                                    println!("is_joined: {is_joined}");
                                     tx.send(is_joined).expect("broadcast failed");
                                 }
                             }
