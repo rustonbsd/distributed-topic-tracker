@@ -685,6 +685,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             for node_id in bootstrap_nodes.iter() {
                 match gossip_sender.join_peers(vec![*node_id], None).await {
                     Ok(_) => {
+                        println!("trying to join {}",node_id.to_string());
                         sleep(Duration::from_millis(100)).await;
                         if gossip_receiver.is_joined().await {
                             break;
