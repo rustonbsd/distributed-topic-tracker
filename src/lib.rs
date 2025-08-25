@@ -79,7 +79,7 @@ pub struct TopicId {
 #[derive(Debug)]
 pub struct GossipReceiver {
     gossip_event_forwarder: tokio::sync::broadcast::Sender<iroh_gossip::api::Event>,
-    keep_alive_rx: tokio::sync::broadcast::Receiver<iroh_gossip::api::Event>,
+    _keep_alive_rx: tokio::sync::broadcast::Receiver<iroh_gossip::api::Event>,
     action_req: tokio::sync::mpsc::Sender<InnerActionRecv>,
     last_message_hashes: Vec<[u8; 32]>,
 }
@@ -88,7 +88,7 @@ impl Clone for GossipReceiver {
     fn clone(&self) -> Self {
         Self {
             gossip_event_forwarder: self.gossip_event_forwarder.clone(),
-            keep_alive_rx: self.gossip_event_forwarder.subscribe(),
+            _keep_alive_rx: self.gossip_event_forwarder.subscribe(),
             action_req: self.action_req.clone(),
             last_message_hashes: self.last_message_hashes.clone(),
         }
@@ -344,7 +344,7 @@ impl GossipReceiver {
 
         let self_ref = Self {
             gossip_event_forwarder: gossip_forward_tx.clone(),
-            keep_alive_rx,
+            _keep_alive_rx: keep_alive_rx,
             action_req: action_req_tx.clone(),
             last_message_hashes: vec![],
         };
@@ -383,6 +383,7 @@ impl GossipReceiver {
                                     self_ref.gossip_event_forwarder.receiver_count()
                                 );
                             } else {
+                                println!("astala vista baby");
                                 break;
                             }
                         }
