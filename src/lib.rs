@@ -276,13 +276,10 @@ impl GossipSender {
                     match inner_action {
                         InnerActionSend::ReqSend(data, tx) => {
                             let res = gossip_sender.broadcast(data.into()).await;
-                            println!("gossip_sender.broadcast -> {:?}", res.as_ref().err());
-
                             tx.send(res.is_ok()).expect("broadcast failed");
                         }
                         InnerActionSend::ReqJoinPeers(peers, tx) => {
-                            let res = gossip_sender.join_peers(peers).await;
-                            println!("gossip_sender.join_peers -> {:?}", res.as_ref().err());                            
+                            let res = gossip_sender.join_peers(peers).await;                     
                             tx.send(res.is_ok()).expect("broadcast failed");
                         }
                     }
@@ -336,7 +333,7 @@ impl GossipSender {
 
 impl GossipReceiver {
     pub fn new(gossip_receiver: iroh_gossip::api::GossipReceiver) -> Self {
-        let (gossip_forward_tx, mut gossip_forward_rx) =
+        let (gossip_forward_tx, _) =
             tokio::sync::broadcast::channel::<iroh_gossip::api::Event>(1024);
         let (action_req_tx, mut action_req_rx) =
             tokio::sync::mpsc::channel::<InnerActionRecv>(1024);
@@ -349,6 +346,7 @@ impl GossipReceiver {
             action_req: action_req_tx.clone(),
             last_message_hashes: vec![],
         };
+
         tokio::spawn({
             let mut self_ref = self_ref.clone();
             async move {
@@ -379,12 +377,7 @@ impl GossipReceiver {
                                     }
                                 }
                                 let _ = self_ref.gossip_event_forwarder.send(gossip_event.clone());
-                                println!(
-                                    "forwarded gossip_event, receivers={}",
-                                    self_ref.gossip_event_forwarder.receiver_count()
-                                );
                             } else {
-                                println!("astala vista baby");
                                 break;
                             }
                         }
@@ -556,7 +549,6 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             GossipReceiver::new(gossip_receiver),
         );
 
-        /*
         tokio::spawn({
             let gossip_sender = gossip_sender.clone();
             let gossip_receiver = gossip_receiver.clone();
@@ -574,7 +566,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 )
                 .await
             }
-        });*/
+        });
 
         Ok((gossip_sender, gossip_receiver))
     }
@@ -682,8 +674,6 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 .filter_map(|node_id| iroh::NodeId::from_bytes(&node_id).ok())
                 .collect::<HashSet<_>>();
 
-            println!("we found records: {bootstrap_nodes:?}");
-
             // Maybe in the meantime someone connected to us via one of our published records
             // we don't want to disrup the gossip rotations any more then we have to
             // so we check again before joining new peers
@@ -698,14 +688,6 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             for node_id in bootstrap_nodes.iter() {
                 match gossip_sender.join_peers(vec![*node_id], None).await {
                     Ok(_) => {
-                        println!("trying to join {:?}", gossip_receiver.neighbors().await);
-                         println!(
-                            "broadcast receivers: {}",
-                            gossip_receiver.gossip_event_forwarder.receiver_count()
-                        );
-                        if let Ok(joined) = gossip_receiver.is_joined().await {
-                            println!("is_joined() -> {}", joined);
-                        }
                         sleep(Duration::from_millis(100)).await;
                         if let Ok(joined) = gossip_receiver.is_joined().await {
                             if joined {
@@ -713,8 +695,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                             }
                         }
                     }
-                    Err(e) => {
-                        println!("join_peers error: {:?}", e);
+                    Err(_) => {
                         continue;
                     }
                 }
