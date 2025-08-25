@@ -65,6 +65,7 @@ pub struct Topic<R: SecretRotation + Default + Clone + Send + 'static> {
     topic_id: TopicId,
     gossip_sender: GossipSender,
     gossip_receiver: GossipReceiver,
+    _gossip: iroh_gossip::net::Gossip,
     initial_secret_hash: [u8; 32],
     secret_rotation_function: R,
     node_id: iroh::NodeId,
@@ -382,8 +383,9 @@ impl GossipReceiver {
                                     "forwarded gossip_event, receivers={}",
                                     self_ref.gossip_event_forwarder.receiver_count()
                                 );
-                            } else if let Some(Err(err)) = gossip_event_res {
-                                println!("astalavista: {err}");
+                            } else {
+                                println!("astala vista baby");
+                                break;
                             }
                         }
                     }
@@ -463,7 +465,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 topic_id.clone(),
                 endpoint,
                 node_signing_key,
-                gossip,
+                gossip.clone(),
                 initial_secret_hash,
                 secret_rotation_function.clone(),
             )
@@ -473,7 +475,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 topic_id.clone(),
                 endpoint,
                 node_signing_key,
-                gossip,
+                gossip.clone(),
                 initial_secret_hash,
                 secret_rotation_function.clone(),
             )
@@ -495,6 +497,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             topic_id,
             gossip_sender: gossip_tx,
             gossip_receiver: gossip_rx,
+            _gossip: gossip,
             initial_secret_hash,
             secret_rotation_function: secret_rotation_function.unwrap_or_default(),
             node_id: endpoint.node_id(),
