@@ -382,9 +382,8 @@ impl GossipReceiver {
                                     "forwarded gossip_event, receivers={}",
                                     self_ref.gossip_event_forwarder.receiver_count()
                                 );
-                            } else {
-                                println!("astala vista baby");
-                                break;
+                            } else if let Some(Err(err)) = gossip_event_res {
+                                println!("astalavista: {err}");
                             }
                         }
                     }
