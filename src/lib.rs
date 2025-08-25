@@ -304,7 +304,8 @@ impl GossipSender {
         }
 
         let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
-        let _ = self.action_req
+        let _ = self
+            .action_req
             .send(InnerActionSend::ReqJoinPeers(peers, tx))
             .await;
 
@@ -593,7 +594,9 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         loop {
             // Check if we are connected to at least one node
             if let Ok(joined) = gossip_receiver.is_joined().await {
-                return Ok((gossip_sender, gossip_receiver));
+                if joined {
+                    return Ok((gossip_sender, gossip_receiver));
+                }
             }
 
             // On the first try we check the prev unix minute, after that the current one
@@ -659,7 +662,9 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             // we don't want to disrup the gossip rotations any more then we have to
             // so we check again before joining new peers
             if let Ok(joined) = gossip_receiver.is_joined().await {
-                return Ok((gossip_sender, gossip_receiver));
+                if joined {
+                    return Ok((gossip_sender, gossip_receiver));
+                }
             }
 
             // Instead of throwing everything into join_peers() at once we go node_id by node_id
@@ -670,7 +675,9 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                         println!("trying to join {:?}", gossip_receiver.neighbors().await);
                         sleep(Duration::from_millis(100)).await;
                         if let Ok(joined) = gossip_receiver.is_joined().await {
-                            break;
+                            if joined {
+                                break;
+                            }
                         }
                     }
                     Err(_) => {
@@ -819,7 +826,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                     initial_secret_hash,
                     node_id,
                     &node_signing_key,
-                     gossip_receiver.neighbors().await.unwrap_or_default(),
+                    gossip_receiver.neighbors().await.unwrap_or_default(),
                     gossip_receiver.last_message_hashes(),
                 )
                 .await
