@@ -275,10 +275,13 @@ impl GossipSender {
                     match inner_action {
                         InnerActionSend::ReqSend(data, tx) => {
                             let res = gossip_sender.broadcast(data.into()).await;
+                            println!("gossip_sender.broadcast -> {:?}", res.as_ref().err());
+
                             tx.send(res.is_ok()).expect("broadcast failed");
                         }
                         InnerActionSend::ReqJoinPeers(peers, tx) => {
                             let res = gossip_sender.join_peers(peers).await;
+                            println!("gossip_sender.join_peers -> {:?}", res.as_ref().err());                            
                             tx.send(res.is_ok()).expect("broadcast failed");
                         }
                     }
@@ -374,7 +377,11 @@ impl GossipReceiver {
                                         }
                                     }
                                 }
-                                let _ = self_ref.gossip_event_forwarder.send(gossip_event);
+                                let _ = self_ref.gossip_event_forwarder.send(gossip_event.clone());
+                                println!(
+                                    "forwarded gossip_event, receivers={}",
+                                    self_ref.gossip_event_forwarder.receiver_count()
+                                );
                             } else {
                                 break;
                             }
@@ -689,6 +696,13 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 match gossip_sender.join_peers(vec![*node_id], None).await {
                     Ok(_) => {
                         println!("trying to join {:?}", gossip_receiver.neighbors().await);
+                         println!(
+                            "broadcast receivers: {}",
+                            gossip_receiver.gossip_event_forwarder.receiver_count()
+                        );
+                        if let Ok(joined) = gossip_receiver.is_joined().await {
+                            println!("is_joined() -> {}", joined);
+                        }
                         sleep(Duration::from_millis(100)).await;
                         if let Ok(joined) = gossip_receiver.is_joined().await {
                             if joined {
@@ -696,7 +710,8 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                             }
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        println!("join_peers error: {:?}", e);
                         continue;
                     }
                 }
