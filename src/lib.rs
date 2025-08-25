@@ -281,7 +281,7 @@ impl GossipSender {
 
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
         let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
-        self.action_req
+        let _ = self.action_req
             .send(InnerActionSend::ReqSend(data, tx))
             .await;
 
@@ -323,6 +323,10 @@ impl GossipReceiver {
             tokio::sync::broadcast::channel::<iroh_gossip::api::Event>(1024);
         let (action_req_tx, mut action_req_rx) =
             tokio::sync::mpsc::channel::<InnerActionRecv>(1024);
+
+        tokio::spawn(async move {
+            while gossip_forward_rx.recv().await.is_ok() {}
+        });
 
         let self_ref = Self {
             gossip_event_forwarder: gossip_forward_tx.clone(),
