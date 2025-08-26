@@ -80,26 +80,39 @@ pub struct TopicId {
 #[derive(Debug)]
 pub struct GossipReceiver {
     gossip_event_forwarder: tokio::sync::broadcast::Sender<iroh_gossip::api::Event>,
-    _keep_alive_rx: tokio::sync::broadcast::Receiver<iroh_gossip::api::Event>,
     action_req: tokio::sync::mpsc::Sender<InnerActionRecv>,
     last_message_hashes: Vec<[u8; 32]>,
+    _keep_alive_rx: tokio::sync::broadcast::Receiver<iroh_gossip::api::Event>,
+    _gossip: iroh_gossip::net::Gossip,
 }
 
 impl Clone for GossipReceiver {
     fn clone(&self) -> Self {
         Self {
             gossip_event_forwarder: self.gossip_event_forwarder.clone(),
-            _keep_alive_rx: self.gossip_event_forwarder.subscribe(),
             action_req: self.action_req.clone(),
             last_message_hashes: self.last_message_hashes.clone(),
+            _keep_alive_rx: self.gossip_event_forwarder.subscribe(),
+            _gossip: self._gossip.clone(),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GossipSender {
     action_req: tokio::sync::mpsc::Sender<InnerActionSend>,
+    _gossip: iroh_gossip::net::Gossip,
 }
+
+impl Clone for GossipSender {
+    fn clone(&self) -> Self {
+        Self {
+            action_req: self.action_req.clone(),
+            _gossip: self._gossip.clone(),
+        }
+    }
+}
+
 
 #[derive(Debug)]
 enum InnerActionRecv {
@@ -265,7 +278,7 @@ impl Record {
 }
 
 impl GossipSender {
-    pub fn new(gossip_sender: iroh_gossip::api::GossipSender) -> Self {
+    pub fn new(gossip_sender: iroh_gossip::api::GossipSender, gossip: iroh_gossip::net::Gossip) -> Self {
         let (action_req_tx, mut action_req_rx) =
             tokio::sync::mpsc::channel::<InnerActionSend>(1024);
 
@@ -289,6 +302,7 @@ impl GossipSender {
 
         Self {
             action_req: action_req_tx,
+            _gossip: gossip,
         }
     }
 
@@ -332,7 +346,7 @@ impl GossipSender {
 }
 
 impl GossipReceiver {
-    pub fn new(gossip_receiver: iroh_gossip::api::GossipReceiver) -> Self {
+    pub fn new(gossip_receiver: iroh_gossip::api::GossipReceiver, gossip: iroh_gossip::net::Gossip) -> Self {
         let (gossip_forward_tx, _) =
             tokio::sync::broadcast::channel::<iroh_gossip::api::Event>(1024);
         let (action_req_tx, mut action_req_rx) =
@@ -342,9 +356,10 @@ impl GossipReceiver {
 
         let self_ref = Self {
             gossip_event_forwarder: gossip_forward_tx.clone(),
-            _keep_alive_rx: keep_alive_rx,
             action_req: action_req_tx.clone(),
             last_message_hashes: vec![],
+            _keep_alive_rx: keep_alive_rx,
+            _gossip: gossip,
         };
 
         tokio::spawn({
@@ -545,8 +560,8 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             .await?;
         let (gossip_sender, gossip_receiver) = gossip_topic.split();
         let (gossip_sender, gossip_receiver) = (
-            GossipSender::new(gossip_sender),
-            GossipReceiver::new(gossip_receiver),
+            GossipSender::new(gossip_sender,gossip.clone()),
+            GossipReceiver::new(gossip_receiver,gossip.clone()),
         );
 
         tokio::spawn({
@@ -584,8 +599,8 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             .await?;
         let (gossip_sender, gossip_receiver) = gossip_topic.split();
         let (gossip_sender, gossip_receiver) = (
-            GossipSender::new(gossip_sender),
-            GossipReceiver::new(gossip_receiver),
+            GossipSender::new(gossip_sender,gossip.clone()),
+            GossipReceiver::new(gossip_receiver,gossip.clone()),
         );
         Self::bootstrap_from_gossip(
             gossip_sender,
