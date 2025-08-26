@@ -32,7 +32,7 @@ tokio = "1"
 iroh = "*"
 iroh-gossip = "*"
 
-distributed-topic-tracker = "0.1.1"
+distributed-topic-tracker = "0.1.2"
 ```
 
 Minimal example:
