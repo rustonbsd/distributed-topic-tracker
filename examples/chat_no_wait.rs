@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
 
     // Split into sink (sending) and stream (receiving)
     let (sink, mut stream) = gossip
-        .subscribe_and_join_with_auto_discovery(topic_id, initial_secret)
+        .subscribe_and_join_with_auto_discovery_no_wait(topic_id, initial_secret)
         .await?
         .split();
 

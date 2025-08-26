@@ -10,6 +10,7 @@ use distributed_topic_tracker::{
 
 
 #[derive(Debug, Clone, Copy)]
+#[derive(Default)]
 struct MySecretRotation;
 
 impl SecretRotation for MySecretRotation {
@@ -27,13 +28,6 @@ impl SecretRotation for MySecretRotation {
         hash.finalize()[..32].try_into().expect("hashing failed")
     }
 }
-
-impl Default for MySecretRotation {
-    fn default() -> Self {
-        Self {}
-    }
-}
-
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -62,7 +56,7 @@ async fn main() -> Result<()> {
 
     // Split into sink (sending) and stream (receiving)
     let (sink, mut stream) = gossip
-        .subscribe_and_join_with_auto_discovery(topic_id, &initial_secret)
+        .subscribe_and_join_with_auto_discovery(topic_id, initial_secret)
         .await?
         .split();
 
@@ -70,7 +64,8 @@ async fn main() -> Result<()> {
 
     // Spawn listener for incoming messages
     tokio::spawn(async move {
-        while let Ok(event) = stream.recv().await {
+        let mut reader = stream.subscribe().await.unwrap();
+        while let Ok(event) = reader.recv().await {
             if let Event::Received(msg) = event {
                 println!(
                     "\nMessage from {}: {}",
@@ -92,7 +87,7 @@ async fn main() -> Result<()> {
         sink.broadcast(buffer.clone().replace("\n", "").into())
             .await
             .unwrap();
-        print!(" - (sent)\n");
+        println!(" - (sent)");
         buffer.clear();
     }
 }

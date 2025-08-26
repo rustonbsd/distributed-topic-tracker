@@ -5,23 +5,18 @@
 [![Docs.rs](https://docs.rs/distributed-topic-tracker/badge.svg)](https://docs.rs/distributed-topic-tracker)
 
 
-Decentralized, rate-limited auto-discovery and bootstrap for [iroh-gossip](https://github.com/n0-computer/iroh-gossip),
-backed by the BitTorrent mainline DHT and rotating shared secrets.
-No centralized components.
+Decentralized auto Bootstraping for [iroh-gossip](https://github.com/n0-computer/iroh-gossip) topic's via the [mainline](https://github.com/pubky/mainline) Bittorrent DHT.
 
-Next iteration of the [iroh-topic-tracker](https://github.com/rustonbsd/iroh-topic-tracker).
-
-Links:
+### Protocol Info
 - Protocol details (spec): [PROTOCOL.md](/PROTOCOL.md)
 - Architecture (illustrative): [ARCHITECTURE.md](/ARCHITECTURE.md)
 - Feedback issue: https://github.com/rustonbsd/distributed-topic-tracker-exp/issues/5
 
-Status: protocol is defined. lib is working. now: testing. next: preparing for production. 
 
 ## Features
 
 - Fully decentralized bootstrap for iroh-gossip
-- Ed25519-based signing; shared-secret-based encryption
+- Ed25519-based signing and hpke shared-secret-based encryption
 - DHT rate limiting (caps per-minute records)
 - Resilient bootstrap with retries and jitter
 - Background publisher with bubble detection and peer merging
@@ -134,9 +129,9 @@ The e2e test verifies that multiple nodes can discover each other through the DH
 
 - [x] Finalize crate name and publish to crates.io
 - [x] Tests and CI
+- [x] Add more examples
 - [ ] Docs (api)
 - [ ] Optimize configuration settings
-- [ ] Add more examples
 
 ## License
 
