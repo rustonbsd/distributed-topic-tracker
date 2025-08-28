@@ -32,10 +32,10 @@ tokio = "1"
 iroh = "*"
 iroh-gossip = "*"
 
-distributed-topic-tracker = "0.1.2"
+distributed-topic-tracker = "0.1.3"
 ```
 
-Minimal example:
+Chat example:
 
 ```rust
 use anyhow::Result;
