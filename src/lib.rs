@@ -652,21 +652,27 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             // If there are no records, invoke the publish_proc (the publishing procedure)
             // continue the loop after
             if records.is_empty() {
-                if unix_minute != last_published_unix_minute
-                    && Self::publish_proc(
-                        unix_minute,
-                        &topic_id,
-                        secret_rotation_function.clone(),
-                        initial_secret_hash,
-                        endpoint.node_id(),
-                        node_signing_key,
-                        HashSet::new(),
-                        vec![],
-                    )
-                    .await
-                    .is_ok()
-                {
+                if unix_minute != last_published_unix_minute {
                     last_published_unix_minute = unix_minute;
+                    tokio::spawn({
+                        let topic_id = topic_id.clone();
+                        let node_id = endpoint.node_id();
+                        let node_signing_key = node_signing_key.clone();
+                        let secret_rotation_function = secret_rotation_function.clone();
+                        async move {
+                            let _ = Self::publish_proc(
+                                unix_minute,
+                                &topic_id,
+                                secret_rotation_function,
+                                initial_secret_hash,
+                                node_id,
+                                &node_signing_key,
+                                HashSet::new(),
+                                vec![],
+                            )
+                            .await;
+                        }
+                    });
                 }
                 sleep(Duration::from_millis(100)).await;
                 continue;
@@ -731,21 +737,27 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 }
             } else {
                 // If we are not connected: check if we should publish a record this minute
-                if unix_minute != last_published_unix_minute
-                    && Self::publish_proc(
-                        unix_minute,
-                        &topic_id,
-                        secret_rotation_function.clone(),
-                        initial_secret_hash,
-                        endpoint.node_id(),
-                        node_signing_key,
-                        HashSet::new(),
-                        vec![],
-                    )
-                    .await
-                    .is_ok()
-                {
+                if unix_minute != last_published_unix_minute {
                     last_published_unix_minute = unix_minute;
+                    tokio::spawn({
+                        let topic_id = topic_id.clone();
+                        let node_id = endpoint.node_id();
+                        let node_signing_key = node_signing_key.clone();
+                        let secret_rotation_function = secret_rotation_function.clone();
+                        async move {
+                            let _ = Self::publish_proc(
+                                unix_minute,
+                                &topic_id,
+                                secret_rotation_function,
+                                initial_secret_hash,
+                                node_id,
+                                &node_signing_key,
+                                HashSet::new(),
+                                vec![],
+                            )
+                            .await;
+                        }
+                    });
                 }
                 sleep(Duration::from_millis(100)).await;
                 continue;
