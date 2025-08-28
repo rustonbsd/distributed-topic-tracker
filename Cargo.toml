@@ -7,13 +7,13 @@ repository = "https://github.com/rustonbsd/distributed-topic-tracker"
 readme = "README.md"
 keywords = ["networking"]
 categories = ["network-programming"]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 
 
 [dependencies]
 sha2 = "0.10"
-anyhow = "1"
+anyhow = "1.0.99"
 z32 = "1.3"
 hmac = "0.12"
 primitive-types = "0.13"
