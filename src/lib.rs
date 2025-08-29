@@ -1,6 +1,6 @@
 pub mod actor;
-mod gossip;
-mod crypto;
+pub mod crypto;
+pub mod gossip;
 
 pub use gossip::sender;
 
@@ -8,21 +8,21 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use arc_swap::ArcSwap;
-use ed25519_dalek::ed25519::signature::SignerMut;
 use futures::StreamExt as _;
 use iroh::Endpoint;
 use mainline::{MutableItem, async_dht::AsyncDht};
 use once_cell::sync::Lazy;
 use sha2::Digest;
 
-use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use tokio::time::{sleep, timeout};
 
-use crate::{crypto::record::{EncryptedRecord, Record}, gossip::{reader::GossipReceiver, sender::GossipSender}};
+use crate::{
+    crypto::record::{EncryptedRecord, Record},
+    gossip::{reader::GossipReceiver, sender::GossipSender},
+};
 
 pub const MAX_JOIN_PEERS_COUNT: usize = 30;
 pub const MAX_BOOTSTRAP_RECORDS: usize = 10;
-pub const SECRET_ROTATION: DefaultSecretRotation = DefaultSecretRotation;
 
 static DHT: Lazy<ArcSwap<mainline::async_dht::AsyncDht>> = Lazy::new(|| {
     ArcSwap::from_pointee(
@@ -44,20 +44,20 @@ async fn reset_dht() {
     DHT.store(Arc::new(n_dht.as_async()));
 }
 
-pub struct Gossip<R: SecretRotation + Default + Clone + Send + 'static> {
+pub struct Gossip {
     pub gossip: iroh_gossip::net::Gossip,
     endpoint: iroh::Endpoint,
-    secret_rotation_function: R,
+    secret_rotation_function: crate::crypto::keys::RotationHandle,
 }
 
 #[derive(Debug)]
-pub struct Topic<R: SecretRotation + Default + Clone + Send + 'static> {
+pub struct Topic {
     topic_id: TopicId,
     gossip_sender: GossipSender,
     gossip_receiver: GossipReceiver,
     _gossip: iroh_gossip::net::Gossip,
     initial_secret_hash: [u8; 32],
-    secret_rotation_function: R,
+    secret_rotation_function: crate::crypto::keys::RotationHandle,
     node_id: iroh::NodeId,
 }
 
@@ -66,7 +66,6 @@ pub struct TopicId {
     _raw: String,
     hash: [u8; 32], // sha512( raw )[..32]
 }
-
 
 impl TopicId {
     pub fn new(raw: String) -> Self {
@@ -83,14 +82,14 @@ impl TopicId {
 }
 
 // State: new, split, spawn_publisher
-impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
+impl Topic {
     pub async fn new(
         topic_id: TopicId,
         endpoint: &iroh::Endpoint,
         node_signing_key: &ed25519_dalek::SigningKey,
         gossip: iroh_gossip::net::Gossip,
         initial_secret: &Vec<u8>,
-        secret_rotation_function: Option<R>,
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
         async_bootstrap: bool,
     ) -> Result<Self> {
         // Create secret_hash
@@ -165,7 +164,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         self.gossip_receiver.clone()
     }
 
-    pub fn secret_rotation_function(&self) -> R {
+    pub fn secret_rotation_function(&self) -> crate::crypto::keys::RotationHandle {
         self.secret_rotation_function.clone()
     }
 
@@ -179,14 +178,14 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
 }
 
 // Procedures: Bootstrap, Publishing, Publisher
-impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
+impl Topic {
     pub async fn bootstrap_no_wait(
         topic_id: TopicId,
         endpoint: &iroh::Endpoint,
         node_signing_key: &ed25519_dalek::SigningKey,
         gossip: iroh_gossip::net::Gossip,
         initial_secret_hash: [u8; 32],
-        secret_rotation_function: Option<R>,
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
     ) -> Result<(GossipSender, GossipReceiver)> {
         let gossip_topic: iroh_gossip::api::GossipTopic = gossip
             .subscribe(iroh_gossip::proto::TopicId::from(topic_id.hash), vec![])
@@ -225,7 +224,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         node_signing_key: &ed25519_dalek::SigningKey,
         gossip: iroh_gossip::net::Gossip,
         initial_secret_hash: [u8; 32],
-        secret_rotation_function: Option<R>,
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
     ) -> Result<(GossipSender, GossipReceiver)> {
         let gossip_topic: iroh_gossip::api::GossipTopic = gossip
             .subscribe(iroh_gossip::proto::TopicId::from(topic_id.hash), vec![])
@@ -256,7 +255,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         endpoint: &iroh::Endpoint,
         node_signing_key: &ed25519_dalek::SigningKey,
         initial_secret_hash: [u8; 32],
-        secret_rotation_function: Option<R>,
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
     ) -> Result<(GossipSender, GossipReceiver)> {
         let mut last_published_unix_minute = 0;
         loop {
@@ -403,7 +402,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
     async fn publish_proc(
         unix_minute: u64,
         topic_id: &TopicId,
-        secret_rotation_function: Option<R>,
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
         initial_secret_hash: [u8; 32],
         node_id: iroh::NodeId,
         node_signing_key: &ed25519_dalek::SigningKey,
@@ -411,7 +410,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         last_message_hashes: Vec<[u8; 32]>,
     ) -> Result<HashSet<Record>> {
         // Get verified records that have active_peers or last_message_hashes set (active participants)
-        let records = Topic::<R>::get_unix_minute_records(
+        let records = Topic::get_unix_minute_records(
             &topic_id.clone(),
             unix_minute,
             secret_rotation_function.clone(),
@@ -462,7 +461,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             last_message_hashes_array,
             node_signing_key,
         );
-        Topic::<R>::publish_unix_minute_record(
+        Topic::publish_unix_minute_record(
             unix_minute,
             &topic_id.clone(),
             secret_rotation_function.clone(),
@@ -478,7 +477,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
     // Runs after bootstrap to keep anouncing the topic on mainline and help identify and merge network bubbles
     fn spawn_publisher(
         topic_id: TopicId,
-        secret_rotation_function: Option<R>,
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
         initial_secret_hash: [u8; 32],
         node_id: iroh::NodeId,
         gossip_receiver: GossipReceiver,
@@ -491,7 +490,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 let unix_minute = crate::unix_minute(0);
 
                 // Run publish_proc() (publishing procedure that is aware of MAX_BOOTSTRAP_RECORDS already written)
-                if let Ok(records) = Topic::<R>::publish_proc(
+                if let Ok(records) = Topic::publish_proc(
                     unix_minute,
                     &topic_id.clone(),
                     Some(secret_rotation_function.clone().unwrap_or_default()),
@@ -544,10 +543,13 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                         let peers_to_join = records
                             .iter()
                             .filter(|record| {
-                                !record.last_message_hashes().iter().all(|last_message_hash| {
-                                    *last_message_hash != [0; 32]
-                                        && last_message_hashes.contains(last_message_hash)
-                                })
+                                !record
+                                    .last_message_hashes()
+                                    .iter()
+                                    .all(|last_message_hash| {
+                                        *last_message_hash != [0; 32]
+                                            && last_message_hashes.contains(last_message_hash)
+                                    })
                             })
                             .collect::<Vec<_>>();
                         if !peers_to_join.is_empty() {
@@ -555,7 +557,8 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                                 .iter()
                                 .flat_map(|&record| {
                                     let mut peers = vec![];
-                                    if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id()) {
+                                    if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id())
+                                    {
                                         peers.push(node_id);
                                     }
                                     for active_peer in record.active_peers() {
@@ -600,56 +603,22 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
 }
 
 // Basic building blocks
-impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
-    fn signing_keypair(topic_id: &TopicId, unix_minute: u64) -> ed25519_dalek::SigningKey {
-        let mut sign_keypair_hash = sha2::Sha512::new();
-        sign_keypair_hash.update(topic_id.hash);
-        sign_keypair_hash.update(unix_minute.to_le_bytes());
-        let sign_keypair_seed: [u8; 32] = sign_keypair_hash.finalize()[..32]
-            .try_into()
-            .expect("hashing failed");
-        ed25519_dalek::SigningKey::from_bytes(&sign_keypair_seed)
-    }
-
-    fn encryption_keypair(
-        topic_id: &TopicId,
-        secret_rotation_function: &R,
-        initial_secret_hash: [u8; 32],
-        unix_minute: u64,
-    ) -> ed25519_dalek::SigningKey {
-        let enc_keypair_seed = secret_rotation_function.get_unix_minute_secret(
-            topic_id.hash,
-            unix_minute,
-            initial_secret_hash,
-        );
-        ed25519_dalek::SigningKey::from_bytes(&enc_keypair_seed)
-    }
-
-    // salt = hash (topic + unix_minute)
-    fn salt(topic_id: &TopicId, unix_minute: u64) -> [u8; 32] {
-        let mut slot_hash = sha2::Sha512::new();
-        slot_hash.update(topic_id.hash);
-        slot_hash.update(unix_minute.to_le_bytes());
-        slot_hash.finalize()[..32]
-            .try_into()
-            .expect("hashing failed")
-    }
-
+impl Topic {
     async fn get_unix_minute_records(
         topic_id: &TopicId,
         unix_minute: u64,
-        secret_rotation_function: Option<R>,
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
         initial_secret_hash: [u8; 32],
         node_id: &iroh::NodeId,
     ) -> HashSet<Record> {
-        let topic_sign = Topic::<R>::signing_keypair(topic_id, unix_minute);
-        let encryption_key = Topic::<R>::encryption_keypair(
+        let topic_sign = crate::crypto::keys::signing_keypair(topic_id, unix_minute);
+        let encryption_key = crate::crypto::keys::encryption_keypair(
             topic_id,
             &secret_rotation_function.clone().unwrap_or_default(),
             initial_secret_hash,
             unix_minute,
         );
-        let salt = Topic::<R>::salt(topic_id, unix_minute);
+        let salt = crate::crypto::keys::salt(topic_id, unix_minute);
 
         // Get records, decrypt and verify
         let dht = get_dht();
@@ -685,14 +654,14 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
     async fn publish_unix_minute_record(
         unix_minute: u64,
         topic_id: &TopicId,
-        secret_rotation_function: Option<R>,
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
         initial_secret_hash: [u8; 32],
         record: Record,
         retry_count: Option<usize>,
     ) -> Result<()> {
-        let sign_key = Topic::<R>::signing_keypair(&topic_id.clone(), unix_minute);
-        let salt = Topic::<R>::salt(topic_id, unix_minute);
-        let encryption_key = Topic::<R>::encryption_keypair(
+        let sign_key = crypto::keys::signing_keypair(&topic_id.clone(), unix_minute);
+        let salt = crypto::keys::salt(topic_id, unix_minute);
+        let encryption_key = crypto::keys::encryption_keypair(
             &topic_id.clone(),
             &secret_rotation_function.clone().unwrap_or_default(),
             initial_secret_hash,
@@ -755,19 +724,19 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
 
 pub trait AutoDiscoveryBuilder {
     #[allow(async_fn_in_trait)]
-    async fn spawn_with_auto_discovery<R: SecretRotation + Default + Clone + Send + 'static>(
+    async fn spawn_with_auto_discovery(
         self,
         endpoint: Endpoint,
-        secret_rotation_function: Option<R>,
-    ) -> Result<Gossip<R>>;
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
+    ) -> Result<Gossip>;
 }
 
 impl AutoDiscoveryBuilder for iroh_gossip::net::Builder {
-    async fn spawn_with_auto_discovery<R: SecretRotation + Default + Clone + Send + 'static>(
+    async fn spawn_with_auto_discovery(
         self,
         endpoint: Endpoint,
-        secret_rotation_function: Option<R>,
-    ) -> Result<Gossip<R>> {
+        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
+    ) -> Result<Gossip> {
         Ok(Gossip {
             gossip: self.spawn(endpoint.clone()),
             endpoint: endpoint.clone(),
@@ -776,41 +745,28 @@ impl AutoDiscoveryBuilder for iroh_gossip::net::Builder {
     }
 }
 
-pub trait AutoDiscoveryGossip<R: SecretRotation + Default + Clone + Send + 'static> {
+pub trait AutoDiscoveryGossip {
     #[allow(async_fn_in_trait)]
     async fn subscribe_and_join_with_auto_discovery(
         &self,
         topic_id: TopicId,
         initial_secret: Vec<u8>,
-    ) -> Result<Topic<R>>;
+    ) -> Result<Topic>;
 
     #[allow(async_fn_in_trait)]
     async fn subscribe_and_join_with_auto_discovery_no_wait(
         &self,
         topic_id: TopicId,
         initial_secret: Vec<u8>,
-    ) -> Result<Topic<R>>;
+    ) -> Result<Topic>;
 }
 
-// Default secret rotation function
-#[derive(Debug, Clone, Copy, Default)]
-pub struct DefaultSecretRotation;
-
-pub trait SecretRotation {
-    fn get_unix_minute_secret(
-        &self,
-        topic_hash: [u8; 32],
-        unix_minute: u64,
-        initial_secret_hash: [u8; 32],
-    ) -> [u8; 32];
-}
-
-impl<R: SecretRotation + Default + Clone + Send + 'static> AutoDiscoveryGossip<R> for Gossip<R> {
+impl AutoDiscoveryGossip for Gossip {
     async fn subscribe_and_join_with_auto_discovery(
         &self,
         topic_id: TopicId,
         initial_secret: Vec<u8>,
-    ) -> Result<Topic<R>> {
+    ) -> Result<Topic> {
         Topic::new(
             topic_id,
             &self.endpoint,
@@ -827,7 +783,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> AutoDiscoveryGossip<R
         &self,
         topic_id: TopicId,
         initial_secret: Vec<u8>,
-    ) -> Result<Topic<R>> {
+    ) -> Result<Topic> {
         Topic::new(
             topic_id,
             &self.endpoint,
@@ -841,27 +797,14 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> AutoDiscoveryGossip<R
     }
 }
 
-impl SecretRotation for DefaultSecretRotation {
-    fn get_unix_minute_secret(
-        &self,
-        topic_hash: [u8; 32],
-        unix_minute: u64,
-        initial_secret_hash: [u8; 32],
-    ) -> [u8; 32] {
-        let mut hash = sha2::Sha512::new();
-        hash.update(topic_hash);
-        hash.update(unix_minute.to_be_bytes());
-        hash.update(initial_secret_hash);
-        hash.finalize()[..32].try_into().expect("hashing failed")
-    }
-}
-
 pub fn unix_minute(minute_offset: i64) -> u64 {
     ((chrono::Utc::now().timestamp() as f64 / 60.0f64).floor() as i64 + minute_offset) as u64
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::crypto::keys::{DefaultSecretRotation, RotationHandle, SecretRotation};
+
     use super::*;
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
@@ -907,7 +850,10 @@ mod tests {
         assert_eq!(record.unix_minute(), deserialized.unix_minute());
         assert_eq!(record.node_id(), deserialized.node_id());
         assert_eq!(record.active_peers(), deserialized.active_peers());
-        assert_eq!(record.last_message_hashes(), deserialized.last_message_hashes());
+        assert_eq!(
+            record.last_message_hashes(),
+            deserialized.last_message_hashes()
+        );
         assert_eq!(record.signature(), deserialized.signature());
     }
 
@@ -967,7 +913,10 @@ mod tests {
         assert_eq!(record.unix_minute(), decrypted.unix_minute());
         assert_eq!(record.node_id(), decrypted.node_id());
         assert_eq!(record.active_peers(), decrypted.active_peers());
-        assert_eq!(record.last_message_hashes(), decrypted.last_message_hashes());
+        assert_eq!(
+            record.last_message_hashes(),
+            decrypted.last_message_hashes()
+        );
         assert_eq!(record.signature(), decrypted.signature());
     }
 
@@ -1004,26 +953,24 @@ mod tests {
 
     #[test]
     fn test_default_secret_rotation() {
-        let rotation = DefaultSecretRotation;
+        let rotation = RotationHandle::new(DefaultSecretRotation);
         let topic_hash = [1u8; 32];
         let unix_minute = 12345u64;
         let initial_secret_hash = [2u8; 32];
 
-        let secret1 = rotation.get_unix_minute_secret(topic_hash, unix_minute, initial_secret_hash);
-        let secret2 = rotation.get_unix_minute_secret(topic_hash, unix_minute, initial_secret_hash);
+        let secret1 = rotation.derive(topic_hash, unix_minute, initial_secret_hash);
+        let secret2 = rotation.derive(topic_hash, unix_minute, initial_secret_hash);
 
         // Same inputs should produce same secret
         assert_eq!(secret1, secret2);
 
         // Different unix_minute should produce different secret
-        let secret3 =
-            rotation.get_unix_minute_secret(topic_hash, unix_minute + 1, initial_secret_hash);
+        let secret3 = rotation.derive(topic_hash, unix_minute + 1, initial_secret_hash);
         assert_ne!(secret1, secret3);
 
         // Different topic should produce different secret
         let different_topic = [99u8; 32];
-        let secret4 =
-            rotation.get_unix_minute_secret(different_topic, unix_minute, initial_secret_hash);
+        let secret4 = rotation.derive(different_topic, unix_minute, initial_secret_hash);
         assert_ne!(secret1, secret4);
     }
 
@@ -1046,14 +993,14 @@ mod tests {
         let topic_id = TopicId::new("test-topic".to_string());
         let unix_minute = 12345u64;
 
-        let key1 = Topic::<DefaultSecretRotation>::signing_keypair(&topic_id, unix_minute);
-        let key2 = Topic::<DefaultSecretRotation>::signing_keypair(&topic_id, unix_minute);
+        let key1 = crate::crypto::keys::signing_keypair(&topic_id, unix_minute);
+        let key2 = crate::crypto::keys::signing_keypair(&topic_id, unix_minute);
 
         // Same inputs should produce same keypair
         assert_eq!(key1.to_bytes(), key2.to_bytes());
 
         // Different unix_minute should produce different keypair
-        let key3 = Topic::<DefaultSecretRotation>::signing_keypair(&topic_id, unix_minute + 1);
+        let key3 = crate::crypto::keys::signing_keypair(&topic_id, unix_minute + 1);
         assert_ne!(key1.to_bytes(), key3.to_bytes());
     }
 
@@ -1062,15 +1009,15 @@ mod tests {
         let topic_id = TopicId::new("test-topic".to_string());
         let unix_minute = 12345u64;
         let initial_secret_hash = [1u8; 32];
-        let rotation = DefaultSecretRotation;
+        let rotation = RotationHandle::new(DefaultSecretRotation);
 
-        let key1 = Topic::<DefaultSecretRotation>::encryption_keypair(
+        let key1 = crate::crypto::keys::encryption_keypair(
             &topic_id,
             &rotation,
             initial_secret_hash,
             unix_minute,
         );
-        let key2 = Topic::<DefaultSecretRotation>::encryption_keypair(
+        let key2 = crate::crypto::keys::encryption_keypair(
             &topic_id,
             &rotation,
             initial_secret_hash,
@@ -1081,7 +1028,7 @@ mod tests {
         assert_eq!(key1.to_bytes(), key2.to_bytes());
 
         // Different unix_minute should produce different keypair
-        let key3 = Topic::<DefaultSecretRotation>::encryption_keypair(
+        let key3 = crypto::keys::encryption_keypair(
             &topic_id,
             &rotation,
             initial_secret_hash,
@@ -1095,14 +1042,14 @@ mod tests {
         let topic_id = TopicId::new("test-topic".to_string());
         let unix_minute = 12345u64;
 
-        let salt1 = Topic::<DefaultSecretRotation>::salt(&topic_id, unix_minute);
-        let salt2 = Topic::<DefaultSecretRotation>::salt(&topic_id, unix_minute);
+        let salt1 = crypto::keys::salt(&topic_id, unix_minute);
+        let salt2 = crypto::keys::salt(&topic_id, unix_minute);
 
         // Same inputs should produce same salt
         assert_eq!(salt1, salt2);
 
         // Different unix_minute should produce different salt
-        let salt3 = Topic::<DefaultSecretRotation>::salt(&topic_id, unix_minute + 1);
+        let salt3 = crypto::keys::salt(&topic_id, unix_minute + 1);
         assert_ne!(salt1, salt3);
     }
 }

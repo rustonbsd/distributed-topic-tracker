@@ -5,16 +5,13 @@ use sha2::Digest;
 
 // Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{
-    AutoDiscoveryBuilder, AutoDiscoveryGossip, SecretRotation, TopicId,
+    crypto::keys::RotationHandle, AutoDiscoveryBuilder, AutoDiscoveryGossip, TopicId
 };
 
 
-#[derive(Debug, Clone, Copy)]
-#[derive(Default)]
 struct MySecretRotation;
-
-impl SecretRotation for MySecretRotation {
-    fn get_unix_minute_secret(
+impl distributed_topic_tracker::crypto::keys::SecretRotation for MySecretRotation {
+    fn derive(
         &self,
         topic_hash: [u8; 32],
         unix_minute: u64,
@@ -43,7 +40,7 @@ async fn main() -> Result<()> {
 
     // Initialize gossip with auto-discovery
     let gossip = Gossip::builder()
-        .spawn_with_auto_discovery::<MySecretRotation>(endpoint.clone(), None)
+        .spawn_with_auto_discovery(endpoint.clone(),Some(RotationHandle::new(MySecretRotation)))
         .await?;
 
     // Set up protocol router
