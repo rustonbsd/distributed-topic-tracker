@@ -4,7 +4,7 @@ use iroh_gossip::net::Gossip;
 
 // Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{
-    AutoDiscoveryBuilder, AutoDiscoveryGossip, DefaultSecretRotation, TopicId
+    AutoDiscoveryBuilder, AutoDiscoveryGossip, TopicId
 };
 
 #[tokio::main]
@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
 
     // Initialize gossip with auto-discovery
     let gossip = Gossip::builder()
-        .spawn_with_auto_discovery::<DefaultSecretRotation>(endpoint.clone(), None)
+        .spawn_with_auto_discovery(endpoint.clone(), None)
         .await?;
 
     // Set up protocol router
