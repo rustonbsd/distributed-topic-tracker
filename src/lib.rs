@@ -2,6 +2,7 @@ pub mod actor;
 pub mod crypto;
 pub mod dht;
 pub mod gossip;
+pub mod topic;
 
 pub use gossip::sender;
 
