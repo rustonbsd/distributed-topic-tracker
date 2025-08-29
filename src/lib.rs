@@ -1,5 +1,6 @@
 pub mod actor;
 pub mod crypto;
+pub mod dht;
 pub mod gossip;
 
 pub use gossip::sender;
@@ -7,10 +8,9 @@ pub use gossip::sender;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
-use arc_swap::ArcSwap;
 use futures::StreamExt as _;
 use iroh::Endpoint;
-use mainline::{MutableItem, async_dht::AsyncDht};
+use mainline::MutableItem;
 use once_cell::sync::Lazy;
 use sha2::Digest;
 
@@ -18,30 +18,17 @@ use tokio::time::{sleep, timeout};
 
 use crate::{
     crypto::record::{EncryptedRecord, Record},
+    dht::Dht,
     gossip::{reader::GossipReceiver, sender::GossipSender},
 };
 
 pub const MAX_JOIN_PEERS_COUNT: usize = 30;
 pub const MAX_BOOTSTRAP_RECORDS: usize = 10;
 
-static DHT: Lazy<ArcSwap<mainline::async_dht::AsyncDht>> = Lazy::new(|| {
-    ArcSwap::from_pointee(
-        mainline::Dht::builder()
-            .build()
-            .expect("failed to create dht")
-            .as_async(),
-    )
-});
+static DHT: Lazy<Dht> = Lazy::new(|| Dht::new());
 
-fn get_dht() -> Arc<AsyncDht> {
-    DHT.load_full()
-}
-
-async fn reset_dht() {
-    let n_dht = mainline::Dht::builder()
-        .build()
-        .expect("failed to create dht");
-    DHT.store(Arc::new(n_dht.as_async()));
+fn get_dht() -> Dht {
+    DHT.clone()
 }
 
 pub struct Gossip {
@@ -623,13 +610,15 @@ impl Topic {
         // Get records, decrypt and verify
         let dht = get_dht();
 
-        let records_iter = timeout(
-            Duration::from_secs(10),
-            dht.get_mutable(topic_sign.verifying_key().as_bytes(), Some(&salt), None)
-                .collect::<Vec<_>>(),
-        )
-        .await
-        .unwrap_or_default();
+        let records_iter = dht
+            .get(
+                topic_sign.verifying_key().into(),
+                Some(salt.to_vec()),
+                None,
+                Duration::from_secs(10),
+            )
+            .await
+            .unwrap_or_default();
 
         records_iter
             .iter()
@@ -668,57 +657,16 @@ impl Topic {
             unix_minute,
         );
         let encrypted_record = record.encrypt(&encryption_key);
-
-        for i in 0..retry_count.unwrap_or(3) {
-            let dht = get_dht();
-
-            let most_recent_result = timeout(
-                Duration::from_secs(10),
-                dht.get_mutable_most_recent(
-                    sign_key.clone().verifying_key().as_bytes(),
-                    Some(&salt),
-                ),
-            )
-            .await
-            .unwrap_or_default();
-
-            let item = if let Some(mut_item) = most_recent_result {
-                MutableItem::new(
-                    sign_key.clone(),
-                    &encrypted_record.to_bytes(),
-                    mut_item.seq() + 1,
-                    Some(&salt),
-                )
-            } else {
-                MutableItem::new(
-                    sign_key.clone(),
-                    &encrypted_record.to_bytes(),
-                    0,
-                    Some(&salt),
-                )
-            };
-
-            let put_result = match timeout(
-                Duration::from_secs(10),
-                dht.put_mutable(item.clone(), Some(item.seq())),
-            )
-            .await
-            {
-                Ok(result) => result.ok(),
-                Err(_) => None,
-            };
-
-            if put_result.is_some() {
-                break;
-            } else if i == retry_count.unwrap_or(3) - 1 {
-                bail!("failed to publish record")
-            }
-
-            reset_dht().await;
-
-            sleep(Duration::from_millis(rand::random::<u64>() % 2000)).await;
-        }
-        Ok(())
+        let dht = get_dht();
+        dht.put_mutable(
+            sign_key.clone(),
+            sign_key.verifying_key().into(),
+            Some(salt.to_vec()),
+            encrypted_record.to_bytes().to_vec(),
+            retry_count,
+            Duration::from_secs(10),
+        )
+        .await
     }
 }
 
