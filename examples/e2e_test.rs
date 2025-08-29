@@ -29,18 +29,17 @@ async fn main() -> Result<()> {
         .accept(iroh_gossip::ALPN, gossip.gossip.clone())
         .spawn();
 
-    let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
+    let topic_id = TopicId::new("my-iroh-gossip-topic2".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
 
     // Split into sink (sending) and stream (receiving)
-    let (tx,mut rx) = gossip
+    let (tx, rx) = gossip
         .subscribe_and_join_with_auto_discovery(topic_id, initial_secret)
         .await?.split();
 
     tokio::spawn(async move {
-        let mut rx = rx.subscribe().await.unwrap();
-        while let Ok(event) = rx.recv().await {
-            println!("{event:?}");
+        while let Some(Ok(event)) = rx.next().await {
+            println!("event: {event:?}");
         }
     });
 
