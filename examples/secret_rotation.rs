@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     let initial_secret = b"my-initial-secret".to_vec();
 
     // Split into sink (sending) and stream (receiving)
-    let (sink, mut stream) = gossip
+    let (sink, stream) = gossip
         .subscribe_and_join_with_auto_discovery(topic_id, initial_secret)
         .await?
         .split();
@@ -64,8 +64,7 @@ async fn main() -> Result<()> {
 
     // Spawn listener for incoming messages
     tokio::spawn(async move {
-        let mut reader = stream.subscribe().await.unwrap();
-        while let Ok(event) = reader.recv().await {
+        while let Some(Ok(event)) = stream.next().await {
             if let Event::Received(msg) = event {
                 println!(
                     "\nMessage from {}: {}",

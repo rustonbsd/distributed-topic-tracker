@@ -1,3 +1,9 @@
+mod gossip;
+pub mod actor;
+
+pub use gossip::sender;
+
+
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
@@ -5,14 +11,14 @@ use arc_swap::ArcSwap;
 use ed25519_dalek::ed25519::signature::SignerMut;
 use futures::StreamExt as _;
 use iroh::Endpoint;
-use iroh_gossip::{api::Event, proto::DeliveryScope};
 use mainline::{MutableItem, async_dht::AsyncDht};
 use once_cell::sync::Lazy;
-use rand::seq::SliceRandom;
 use sha2::Digest;
 
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use tokio::time::{sleep, timeout};
+
+use crate::gossip::{reader::GossipReceiver, sender::GossipSender};
 
 pub const MAX_JOIN_PEERS_COUNT: usize = 30;
 pub const MAX_BOOTSTRAP_RECORDS: usize = 10;
@@ -75,55 +81,6 @@ pub struct Topic<R: SecretRotation + Default + Clone + Send + 'static> {
 pub struct TopicId {
     _raw: String,
     hash: [u8; 32], // sha512( raw )[..32]
-}
-
-#[derive(Debug)]
-pub struct GossipReceiver {
-    gossip_event_forwarder: tokio::sync::broadcast::Sender<iroh_gossip::api::Event>,
-    action_req: tokio::sync::mpsc::Sender<InnerActionRecv>,
-    last_message_hashes: Vec<[u8; 32]>,
-    _keep_alive_rx: tokio::sync::broadcast::Receiver<iroh_gossip::api::Event>,
-    _gossip: iroh_gossip::net::Gossip,
-}
-
-impl Clone for GossipReceiver {
-    fn clone(&self) -> Self {
-        Self {
-            gossip_event_forwarder: self.gossip_event_forwarder.clone(),
-            action_req: self.action_req.clone(),
-            last_message_hashes: self.last_message_hashes.clone(),
-            _keep_alive_rx: self.gossip_event_forwarder.subscribe(),
-            _gossip: self._gossip.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct GossipSender {
-    action_req: tokio::sync::mpsc::Sender<InnerActionSend>,
-    _gossip: iroh_gossip::net::Gossip,
-}
-
-impl Clone for GossipSender {
-    fn clone(&self) -> Self {
-        Self {
-            action_req: self.action_req.clone(),
-            _gossip: self._gossip.clone(),
-        }
-    }
-}
-
-
-#[derive(Debug)]
-enum InnerActionRecv {
-    ReqNeighbors(tokio::sync::oneshot::Sender<HashSet<iroh::NodeId>>),
-    ReqIsJoined(tokio::sync::oneshot::Sender<bool>),
-}
-
-#[derive(Debug)]
-enum InnerActionSend {
-    ReqSend(Vec<u8>, tokio::sync::oneshot::Sender<bool>),
-    ReqJoinPeers(Vec<iroh::NodeId>, tokio::sync::oneshot::Sender<bool>),
 }
 
 impl EncryptedRecord {
@@ -277,163 +234,7 @@ impl Record {
     }
 }
 
-impl GossipSender {
-    pub fn new(gossip_sender: iroh_gossip::api::GossipSender, gossip: iroh_gossip::net::Gossip) -> Self {
-        let (action_req_tx, mut action_req_rx) =
-            tokio::sync::mpsc::channel::<InnerActionSend>(1024);
 
-        tokio::spawn({
-            let gossip_sender = gossip_sender;
-            async move {
-                while let Some(inner_action) = action_req_rx.recv().await {
-                    match inner_action {
-                        InnerActionSend::ReqSend(data, tx) => {
-                            let res = gossip_sender.broadcast(data.into()).await;
-                            tx.send(res.is_ok()).expect("broadcast failed");
-                        }
-                        InnerActionSend::ReqJoinPeers(peers, tx) => {
-                            let res = gossip_sender.join_peers(peers).await;                     
-                            tx.send(res.is_ok()).expect("broadcast failed");
-                        }
-                    }
-                }
-            }
-        });
-
-        Self {
-            action_req: action_req_tx,
-            _gossip: gossip,
-        }
-    }
-
-    pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
-        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
-        let _ = self
-            .action_req
-            .send(InnerActionSend::ReqSend(data, tx))
-            .await;
-
-        match rx.await {
-            Ok(true) => Ok(()),
-            Ok(false) => bail!("broadcast failed"),
-            Err(_) => panic!("broadcast failed"),
-        }
-    }
-
-    pub async fn join_peers(
-        &self,
-        peers: Vec<iroh::NodeId>,
-        max_peers: Option<usize>,
-    ) -> Result<()> {
-        let mut peers = peers;
-        if let Some(max_peers) = max_peers {
-            peers.shuffle(&mut rand::thread_rng());
-            peers.truncate(max_peers);
-        }
-
-        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
-        let _ = self
-            .action_req
-            .send(InnerActionSend::ReqJoinPeers(peers, tx))
-            .await;
-
-        match rx.await {
-            Ok(true) => Ok(()),
-            Ok(false) => bail!("join peers failed"),
-            Err(_) => panic!("broadcast failed"),
-        }
-    }
-}
-
-impl GossipReceiver {
-    pub fn new(gossip_receiver: iroh_gossip::api::GossipReceiver, gossip: iroh_gossip::net::Gossip) -> Self {
-        let (gossip_forward_tx, _) =
-            tokio::sync::broadcast::channel::<iroh_gossip::api::Event>(1024);
-        let (action_req_tx, mut action_req_rx) =
-            tokio::sync::mpsc::channel::<InnerActionRecv>(1024);
-
-        let keep_alive_rx = gossip_forward_tx.subscribe();
-
-        let self_ref = Self {
-            gossip_event_forwarder: gossip_forward_tx.clone(),
-            action_req: action_req_tx.clone(),
-            last_message_hashes: vec![],
-            _keep_alive_rx: keep_alive_rx,
-            _gossip: gossip,
-        };
-
-        tokio::spawn({
-            let mut self_ref = self_ref.clone();
-            async move {
-                let mut gossip_receiver = gossip_receiver;
-                loop {
-                    tokio::select! {
-                        Some(inner_action) = action_req_rx.recv() => {
-                            match inner_action {
-                                InnerActionRecv::ReqNeighbors(tx) => {
-                                    let neighbors = gossip_receiver.neighbors().collect::<HashSet<iroh::NodeId>>();
-                                    let _ = tx.send(neighbors);
-                                },
-                                InnerActionRecv::ReqIsJoined(tx) => {
-                                    let is_joined = gossip_receiver.is_joined();
-                                    let _ = tx.send(is_joined);
-                                }
-                            }
-                        }
-                        gossip_event_res = gossip_receiver.next() => {
-                            if let Some(Ok(gossip_event)) = gossip_event_res {
-                                if let Event::Received(msg) = gossip_event.clone() {
-                                    if let DeliveryScope::Swarm(_) = msg.scope {
-                                        let hash = sha2::Sha512::digest(&msg.content);
-                                        self_ref.last_message_hashes.push(hash[..32].try_into().expect("hashing failed"));
-                                        while self_ref.last_message_hashes.len() > 5 {
-                                            self_ref.last_message_hashes.pop();
-                                        }
-                                    }
-                                }
-                                let _ = self_ref.gossip_event_forwarder.send(gossip_event.clone());
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        self_ref
-    }
-
-    pub async fn neighbors(&mut self) -> Result<HashSet<iroh::NodeId>> {
-        let (neighbors_tx, neighbors_rx) = tokio::sync::oneshot::channel::<HashSet<iroh::NodeId>>();
-
-        let _ = self
-            .action_req
-            .send(InnerActionRecv::ReqNeighbors(neighbors_tx))
-            .await;
-
-        neighbors_rx.await.map_err(|err| anyhow::anyhow!(err))
-    }
-
-    pub async fn is_joined(&mut self) -> Result<bool> {
-        let (is_joined_tx, is_joined_rx) = tokio::sync::oneshot::channel::<bool>();
-
-        let _ = self
-            .action_req
-            .send(InnerActionRecv::ReqIsJoined(is_joined_tx))
-            .await;
-
-        is_joined_rx.await.map_err(|err| anyhow::anyhow!(err))
-    }
-
-    pub async fn subscribe(&mut self) -> Result<tokio::sync::broadcast::Receiver<Event>> {
-        Ok(self.gossip_event_forwarder.subscribe())
-    }
-
-    pub fn last_message_hashes(&self) -> Vec<[u8; 32]> {
-        self.last_message_hashes.clone()
-    }
-}
 
 impl TopicId {
     pub fn new(raw: String) -> Self {
@@ -602,7 +403,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             GossipSender::new(gossip_sender,gossip.clone()),
             GossipReceiver::new(gossip_receiver,gossip.clone()),
         );
-        Self::bootstrap_from_gossip(
+        let res = Self::bootstrap_from_gossip(
             gossip_sender,
             gossip_receiver,
             topic_id,
@@ -611,12 +412,14 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             initial_secret_hash,
             secret_rotation_function,
         )
-        .await
+        .await;
+        println!("bootstrap done: {:?}", res);
+        res
     }
 
     async fn bootstrap_from_gossip(
         gossip_sender: GossipSender,
-        mut gossip_receiver: GossipReceiver,
+        gossip_receiver: GossipReceiver,
         topic_id: TopicId,
         endpoint: &iroh::Endpoint,
         node_signing_key: &ed25519_dalek::SigningKey,
@@ -626,12 +429,10 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         let mut last_published_unix_minute = 0;
         loop {
             // Check if we are connected to at least one node
-            if let Ok(joined) = gossip_receiver.is_joined().await {
-                if joined {
-                    return Ok((gossip_sender, gossip_receiver));
-                }
+            if gossip_receiver.is_joined().await {
+                return Ok((gossip_sender, gossip_receiver));
             }
-
+            
             // On the first try we check the prev unix minute, after that the current one
             let unix_minute = crate::unix_minute(if last_published_unix_minute == 0 {
                 -1
@@ -698,10 +499,10 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             // Maybe in the meantime someone connected to us via one of our published records
             // we don't want to disrup the gossip rotations any more then we have to
             // so we check again before joining new peers
-            if let Ok(joined) = gossip_receiver.is_joined().await {
-                if joined {
-                    return Ok((gossip_sender, gossip_receiver));
-                }
+            println!("checking if joined before joining peers: {}",gossip_receiver.neighbors().await.len());
+            println!("bootstrap_records: {}", bootstrap_nodes.len());
+            if gossip_receiver.is_joined().await {
+                return Ok((gossip_sender, gossip_receiver));
             }
 
             // Instead of throwing everything into join_peers() at once we go node_id by node_id
@@ -710,13 +511,13 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 match gossip_sender.join_peers(vec![*node_id], None).await {
                     Ok(_) => {
                         sleep(Duration::from_millis(100)).await;
-                        if let Ok(joined) = gossip_receiver.is_joined().await {
-                            if joined {
-                                break;
-                            }
+                        println!("joined peer: {}", node_id);
+                        if gossip_receiver.is_joined().await {
+                            break;
                         }
                     }
                     Err(_) => {
+                        println!("failed to join peers");
                         continue;
                     }
                 }
@@ -724,17 +525,13 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
 
             // If we are still not connected to anyone:
             // give it the default iroh-gossip connection timeout before the final is_joined() check
-            if let Ok(joined) = gossip_receiver.is_joined().await {
-                if !joined {
-                    sleep(Duration::from_millis(500)).await;
-                }
+            if !gossip_receiver.is_joined().await {
+                sleep(Duration::from_millis(500)).await;
             }
 
             // If we are connected: return
-            if let Ok(joined) = gossip_receiver.is_joined().await {
-                if joined {
-                    return Ok((gossip_sender, gossip_receiver));
-                }
+            if gossip_receiver.is_joined().await {
+                return Ok((gossip_sender, gossip_receiver));
             } else {
                 // If we are not connected: check if we should publish a record this minute
                 if unix_minute != last_published_unix_minute {
@@ -853,7 +650,6 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         gossip_sender: GossipSender,
         node_signing_key: ed25519_dalek::SigningKey,
     ) -> tokio::task::JoinHandle<()> {
-        let mut gossip_receiver = gossip_receiver;
 
         tokio::spawn(async move {
             let mut backoff = 1;
@@ -868,13 +664,13 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                     initial_secret_hash,
                     node_id,
                     &node_signing_key,
-                    gossip_receiver.neighbors().await.unwrap_or_default(),
-                    gossip_receiver.last_message_hashes(),
+                    gossip_receiver.neighbors().await,
+                    gossip_receiver.last_message_hashes().await,
                 )
                 .await
                 {
                     // Cluster size as bubble indicator
-                    let neighbors = gossip_receiver.neighbors().await.unwrap_or_default();
+                    let neighbors = gossip_receiver.neighbors().await;
                     if neighbors.len() < 4 && !records.is_empty() {
                         let node_ids = records
                             .iter()
@@ -909,15 +705,14 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                     }
 
                     // Message overlap indicator
-                    if !gossip_receiver.last_message_hashes().is_empty() {
+                    if !gossip_receiver.last_message_hashes().await.is_empty() {
+                        let last_message_hashes = gossip_receiver.last_message_hashes().await;
                         let peers_to_join = records
                             .iter()
                             .filter(|record| {
                                 !record.last_message_hashes.iter().all(|last_message_hash| {
                                     *last_message_hash != [0; 32]
-                                        && gossip_receiver
-                                            .last_message_hashes()
-                                            .contains(last_message_hash)
+                                        && last_message_hashes.contains(last_message_hash)
                                 })
                             })
                             .collect::<Vec<_>>();
