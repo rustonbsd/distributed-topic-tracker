@@ -1,8 +1,8 @@
-mod gossip;
 pub mod actor;
+mod gossip;
+mod crypto;
 
 pub use gossip::sender;
-
 
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
@@ -18,7 +18,7 @@ use sha2::Digest;
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use tokio::time::{sleep, timeout};
 
-use crate::gossip::{reader::GossipReceiver, sender::GossipSender};
+use crate::{crypto::record::{EncryptedRecord, Record}, gossip::{reader::GossipReceiver, sender::GossipSender}};
 
 pub const MAX_JOIN_PEERS_COUNT: usize = 30;
 pub const MAX_BOOTSTRAP_RECORDS: usize = 10;
@@ -44,22 +44,6 @@ async fn reset_dht() {
     DHT.store(Arc::new(n_dht.as_async()));
 }
 
-#[derive(Debug, Clone)]
-pub struct EncryptedRecord {
-    encrypted_record: Vec<u8>,
-    encrypted_decryption_key: Vec<u8>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Record {
-    topic: [u8; 32],
-    unix_minute: u64,
-    node_id: [u8; 32],
-    active_peers: [[u8; 32]; 5],
-    last_message_hashes: [[u8; 32]; 5],
-    signature: [u8; 64],
-}
-
 pub struct Gossip<R: SecretRotation + Default + Clone + Send + 'static> {
     pub gossip: iroh_gossip::net::Gossip,
     endpoint: iroh::Endpoint,
@@ -82,158 +66,6 @@ pub struct TopicId {
     _raw: String,
     hash: [u8; 32], // sha512( raw )[..32]
 }
-
-impl EncryptedRecord {
-    pub fn decrypt(&self, decryption_key: &ed25519_dalek::SigningKey) -> Result<Record> {
-        let one_time_key_bytes: [u8; 32] = decryption_key
-            .decrypt(&self.encrypted_decryption_key)?
-            .as_slice()
-            .try_into()?;
-        let one_time_key = ed25519_dalek::SigningKey::from_bytes(&one_time_key_bytes);
-
-        let decrypted_record = one_time_key.decrypt(&self.encrypted_record)?;
-        let record = Record::from_bytes(decrypted_record)?;
-        Ok(record)
-    }
-
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
-        let encrypted_record_len = self.encrypted_record.len() as u32;
-        buf.extend_from_slice(&encrypted_record_len.to_le_bytes());
-        buf.extend_from_slice(&self.encrypted_record);
-        buf.extend_from_slice(&self.encrypted_decryption_key);
-        buf
-    }
-
-    pub fn from_bytes(buf: Vec<u8>) -> Result<Self> {
-        let (encrypted_record_len, buf) = buf.split_at(4);
-        let encrypted_record_len = u32::from_le_bytes(encrypted_record_len.try_into()?);
-        let (encrypted_record, encrypted_decryption_key) =
-            buf.split_at(encrypted_record_len as usize);
-
-        Ok(Self {
-            encrypted_record: encrypted_record.to_vec(),
-            encrypted_decryption_key: encrypted_decryption_key.to_vec(),
-        })
-    }
-}
-
-impl Record {
-    pub fn sign(
-        topic: [u8; 32],
-        unix_minute: u64,
-        node_id: [u8; 32],
-        active_peers: [[u8; 32]; 5],
-        last_message_hashes: [[u8; 32]; 5],
-        signing_key: &ed25519_dalek::SigningKey,
-    ) -> Self {
-        let mut signature_data = Vec::new();
-        signature_data.extend_from_slice(&topic);
-        signature_data.extend_from_slice(&unix_minute.to_le_bytes());
-        signature_data.extend_from_slice(&node_id);
-        for active_peer in active_peers {
-            signature_data.extend_from_slice(&active_peer);
-        }
-        for last_message_hash in last_message_hashes {
-            signature_data.extend_from_slice(&last_message_hash);
-        }
-        let mut signing_key = signing_key.clone();
-        let signature = signing_key.sign(&signature_data);
-        Self {
-            topic,
-            unix_minute,
-            node_id,
-            active_peers,
-            last_message_hashes,
-            signature: signature.to_bytes(),
-        }
-    }
-
-    pub fn from_bytes(buf: Vec<u8>) -> Result<Self> {
-        let (topic, buf) = buf.split_at(32);
-        let (unix_minute, buf) = buf.split_at(8);
-        let (node_id, mut buf) = buf.split_at(32);
-
-        let mut active_peers: [[u8; 32]; 5] = [[0; 32]; 5];
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..active_peers.len() {
-            let (active_peer, _buf) = buf.split_at(32);
-            active_peers[i] = active_peer.try_into()?;
-            buf = _buf;
-        }
-        let mut last_message_hashes: [[u8; 32]; 5] = [[0; 32]; 5];
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..last_message_hashes.len() {
-            let (last_message_hash, _buf) = buf.split_at(32);
-            last_message_hashes[i] = last_message_hash.try_into()?;
-            buf = _buf;
-        }
-
-        let (signature, buf) = buf.split_at(64);
-
-        if !buf.is_empty() {
-            bail!("buffer not empty after reconstruction")
-        }
-
-        Ok(Self {
-            topic: topic.try_into()?,
-            unix_minute: u64::from_le_bytes(unix_minute.try_into()?),
-            node_id: node_id.try_into()?,
-            active_peers,
-            last_message_hashes,
-            signature: signature.try_into()?,
-        })
-    }
-
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&self.topic);
-        buf.extend_from_slice(&self.unix_minute.to_le_bytes());
-        buf.extend_from_slice(&self.node_id);
-        for active_peer in self.active_peers {
-            buf.extend_from_slice(&active_peer);
-        }
-        for last_message_hash in self.last_message_hashes {
-            buf.extend_from_slice(&last_message_hash);
-        }
-        buf.extend_from_slice(&self.signature);
-        buf
-    }
-
-    pub fn verify(&self, actual_topic: &[u8; 32], actual_unix_minute: u64) -> Result<()> {
-        if self.topic != *actual_topic {
-            bail!("topic mismatch")
-        }
-        if self.unix_minute != actual_unix_minute {
-            bail!("unix minute mismatch")
-        }
-
-        let record_bytes = self.to_bytes();
-        let signature_data = record_bytes[..record_bytes.len() - 64].to_vec();
-        let signature = ed25519_dalek::Signature::from_bytes(&self.signature);
-        let node_id = ed25519_dalek::VerifyingKey::from_bytes(&self.node_id)?;
-
-        node_id.verify_strict(signature_data.as_slice(), &signature)?;
-
-        Ok(())
-    }
-
-    pub fn encrypt(&self, encryption_key: &ed25519_dalek::SigningKey) -> EncryptedRecord {
-        let one_time_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
-        let p_key = one_time_key.verifying_key();
-        let data_enc = p_key.encrypt(&self.to_bytes()).expect("encryption failed");
-        let key_enc = encryption_key
-            .verifying_key()
-            .encrypt(&one_time_key.to_bytes())
-            .expect("encryption failed");
-
-        EncryptedRecord {
-            encrypted_record: data_enc,
-            encrypted_decryption_key: key_enc,
-        }
-    }
-}
-
 
 
 impl TopicId {
@@ -361,8 +193,8 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             .await?;
         let (gossip_sender, gossip_receiver) = gossip_topic.split();
         let (gossip_sender, gossip_receiver) = (
-            GossipSender::new(gossip_sender,gossip.clone()),
-            GossipReceiver::new(gossip_receiver,gossip.clone()),
+            GossipSender::new(gossip_sender, gossip.clone()),
+            GossipReceiver::new(gossip_receiver, gossip.clone()),
         );
 
         tokio::spawn({
@@ -400,8 +232,8 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             .await?;
         let (gossip_sender, gossip_receiver) = gossip_topic.split();
         let (gossip_sender, gossip_receiver) = (
-            GossipSender::new(gossip_sender,gossip.clone()),
-            GossipReceiver::new(gossip_receiver,gossip.clone()),
+            GossipSender::new(gossip_sender, gossip.clone()),
+            GossipReceiver::new(gossip_receiver, gossip.clone()),
         );
         let res = Self::bootstrap_from_gossip(
             gossip_sender,
@@ -432,7 +264,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             if gossip_receiver.is_joined().await {
                 return Ok((gossip_sender, gossip_receiver));
             }
-            
+
             // On the first try we check the prev unix minute, after that the current one
             let unix_minute = crate::unix_minute(if last_published_unix_minute == 0 {
                 -1
@@ -485,8 +317,8 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             let bootstrap_nodes = records
                 .iter()
                 .flat_map(|record| {
-                    let mut v = vec![record.node_id];
-                    for peer in record.active_peers {
+                    let mut v = vec![record.node_id()];
+                    for peer in record.active_peers() {
                         if peer != [0; 32] {
                             v.push(peer);
                         }
@@ -499,7 +331,10 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
             // Maybe in the meantime someone connected to us via one of our published records
             // we don't want to disrup the gossip rotations any more then we have to
             // so we check again before joining new peers
-            println!("checking if joined before joining peers: {}",gossip_receiver.neighbors().await.len());
+            println!(
+                "checking if joined before joining peers: {}",
+                gossip_receiver.neighbors().await.len()
+            );
             println!("bootstrap_records: {}", bootstrap_nodes.len());
             if gossip_receiver.is_joined().await {
                 return Ok((gossip_sender, gossip_receiver));
@@ -587,13 +422,13 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         .iter()
         .filter(|&record| {
             record
-                .active_peers
+                .active_peers()
                 .iter()
                 .filter(|&peer| peer.eq(&[0u8; 32]))
                 .count()
                 > 0
                 || record
-                    .last_message_hashes
+                    .last_message_hashes()
                     .iter()
                     .filter(|&hash| hash.eq(&[0u8; 32]))
                     .count()
@@ -650,7 +485,6 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
         gossip_sender: GossipSender,
         node_signing_key: ed25519_dalek::SigningKey,
     ) -> tokio::task::JoinHandle<()> {
-
         tokio::spawn(async move {
             let mut backoff = 1;
             loop {
@@ -676,12 +510,12 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                             .iter()
                             .flat_map(|record| {
                                 record
-                                    .active_peers
+                                    .active_peers()
                                     .iter()
                                     .filter_map(|&active_peer| {
                                         if active_peer == [0; 32]
                                             || neighbors.contains(&active_peer)
-                                            || active_peer.eq(record.node_id.to_vec().as_slice())
+                                            || active_peer.eq(record.node_id().to_vec().as_slice())
                                             || active_peer.eq(node_id.as_bytes())
                                         {
                                             None
@@ -710,7 +544,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                         let peers_to_join = records
                             .iter()
                             .filter(|record| {
-                                !record.last_message_hashes.iter().all(|last_message_hash| {
+                                !record.last_message_hashes().iter().all(|last_message_hash| {
                                     *last_message_hash != [0; 32]
                                         && last_message_hashes.contains(last_message_hash)
                                 })
@@ -721,10 +555,10 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                                 .iter()
                                 .flat_map(|&record| {
                                     let mut peers = vec![];
-                                    if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id) {
+                                    if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id()) {
                                         peers.push(node_id);
                                     }
-                                    for active_peer in record.active_peers {
+                                    for active_peer in record.active_peers() {
                                         if active_peer == [0; 32] {
                                             continue;
                                         }
@@ -834,7 +668,7 @@ impl<R: SecretRotation + Default + Clone + Send + 'static> Topic<R> {
                 |record| match EncryptedRecord::from_bytes(record.value().to_vec()) {
                     Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
                         Ok(record) => match record.verify(&topic_id.hash, unix_minute) {
-                            Ok(_) => match record.node_id.eq(node_id.as_bytes()) {
+                            Ok(_) => match record.node_id().eq(node_id.as_bytes()) {
                                 true => None,
                                 false => Some(record),
                             },
@@ -1069,12 +903,12 @@ mod tests {
         let bytes = record.to_bytes();
         let deserialized = Record::from_bytes(bytes).unwrap();
 
-        assert_eq!(record.topic, deserialized.topic);
-        assert_eq!(record.unix_minute, deserialized.unix_minute);
-        assert_eq!(record.node_id, deserialized.node_id);
-        assert_eq!(record.active_peers, deserialized.active_peers);
-        assert_eq!(record.last_message_hashes, deserialized.last_message_hashes);
-        assert_eq!(record.signature, deserialized.signature);
+        assert_eq!(record.topic(), deserialized.topic());
+        assert_eq!(record.unix_minute(), deserialized.unix_minute());
+        assert_eq!(record.node_id(), deserialized.node_id());
+        assert_eq!(record.active_peers(), deserialized.active_peers());
+        assert_eq!(record.last_message_hashes(), deserialized.last_message_hashes());
+        assert_eq!(record.signature(), deserialized.signature());
     }
 
     #[test]
@@ -1129,12 +963,12 @@ mod tests {
         let encrypted = record.encrypt(&encryption_key);
         let decrypted = encrypted.decrypt(&encryption_key).unwrap();
 
-        assert_eq!(record.topic, decrypted.topic);
-        assert_eq!(record.unix_minute, decrypted.unix_minute);
-        assert_eq!(record.node_id, decrypted.node_id);
-        assert_eq!(record.active_peers, decrypted.active_peers);
-        assert_eq!(record.last_message_hashes, decrypted.last_message_hashes);
-        assert_eq!(record.signature, decrypted.signature);
+        assert_eq!(record.topic(), decrypted.topic());
+        assert_eq!(record.unix_minute(), decrypted.unix_minute());
+        assert_eq!(record.node_id(), decrypted.node_id());
+        assert_eq!(record.active_peers(), decrypted.active_peers());
+        assert_eq!(record.last_message_hashes(), decrypted.last_message_hashes());
+        assert_eq!(record.signature(), decrypted.signature());
     }
 
     #[test]
@@ -1164,8 +998,8 @@ mod tests {
 
         // Should be able to decrypt the deserialized version
         let decrypted = deserialized.decrypt(&encryption_key).unwrap();
-        assert_eq!(record.topic, decrypted.topic);
-        assert_eq!(record.unix_minute, decrypted.unix_minute);
+        assert_eq!(record.topic(), decrypted.topic());
+        assert_eq!(record.unix_minute(), decrypted.unix_minute());
     }
 
     #[test]
