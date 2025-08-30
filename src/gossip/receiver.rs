@@ -7,7 +7,7 @@ use sha2::Digest;
 
 #[derive(Debug, Clone)]
 pub struct GossipReceiver {
-    handle: Handle<GossipReceiverActor>,
+    api: Handle<GossipReceiverActor>,
     _gossip: iroh_gossip::net::Gossip,
 }
 
@@ -111,20 +111,20 @@ impl GossipReceiver {
         });
 
         Self {
-            handle: api,
+            api,
             _gossip: gossip.clone(),
         }
     }
 
     pub async fn neighbors(&self) -> HashSet<iroh::NodeId> {
-        self.handle
+        self.api
             .call(move |actor| Box::pin(async move { Ok(actor.neighbors()) }))
             .await
             .expect("void")
     }
 
     pub async fn is_joined(&self) -> bool {
-        self.handle
+        self.api
             .call(move |actor| Box::pin(async move { Ok(actor.is_joined()) }))
             .await
             .expect("void")
@@ -133,7 +133,7 @@ impl GossipReceiver {
     pub async fn next(&self) -> Option<Result<iroh_gossip::api::Event, iroh_gossip::api::ApiError>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         // Enqueue request
-        self.handle
+        self.api
             .call(move |actor| {
                 Box::pin(async move {
                     actor.register_next(tx).await?;
@@ -146,7 +146,7 @@ impl GossipReceiver {
     }
 
     pub async fn last_message_hashes(&self) -> Vec<[u8; 32]> {
-        self.handle
+        self.api
             .call(move |actor| Box::pin(async move { Ok(actor.last_message_hashes()) }))
             .await
             .expect("void")

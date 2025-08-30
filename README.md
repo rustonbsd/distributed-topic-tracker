@@ -1,25 +1,10 @@
 # distributed-topic-tracker
 
-
 [![Crates.io](https://img.shields.io/crates/v/distributed-topic-tracker.svg)](https://crates.io/crates/distributed-topic-tracker)
 [![Docs.rs](https://docs.rs/distributed-topic-tracker/badge.svg)](https://docs.rs/distributed-topic-tracker)
 
 
 Decentralized auto Bootstraping for [iroh-gossip](https://github.com/n0-computer/iroh-gossip) topic's via the [mainline](https://github.com/pubky/mainline) Bittorrent DHT.
-
-### Protocol Info
-- Protocol details (spec): [PROTOCOL.md](/PROTOCOL.md)
-- Architecture (illustrative): [ARCHITECTURE.md](/ARCHITECTURE.md)
-- Feedback issue: https://github.com/rustonbsd/distributed-topic-tracker-exp/issues/5
-
-
-## Features
-
-- Fully decentralized bootstrap for iroh-gossip
-- Ed25519-based signing and hpke shared-secret-based encryption
-- DHT rate limiting (caps per-minute records)
-- Resilient bootstrap with retries and jitter
-- Background publisher with bubble detection and peer merging
 
 ## Quick start
 
@@ -43,15 +28,12 @@ use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
 // Imports from distrubuted-topic-tracker
-use distributed_topic_tracker::{
-    TopicId, AutoDiscoveryGossip, RecordPublisher, Dht,
-};
+use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Generate a new random secret key
     let secret_key = SecretKey::generate(rand::rngs::OsRng);
-    let dht = Dht::new();
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
@@ -61,38 +43,56 @@ async fn main() -> Result<()> {
         .await?;
 
     // Initialize gossip with auto-discovery
-    let gossip = Gossip::builder()
-        .spawn(endpoint.clone());
+    let gossip = Gossip::builder().spawn(endpoint.clone());
 
     // Set up protocol router
     let _router = iroh::protocol::Router::builder(endpoint.clone())
         .accept(iroh_gossip::ALPN, gossip.clone())
         .spawn();
 
+    // [Distributed Topic Tracker]
     let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
-
-    // 
     let record_publisher = RecordPublisher::new(
-        dht,
         topic_id.clone(),
         endpoint.node_id(),
         secret_key.secret().clone(),
         None,
         initial_secret,
     );
-        
-    // Split into sink (sending) and stream (receiving)
-    let (gossip_sender, gossip_receiver) = gossip
+
+    // A new field "subscribe_and_join_with_auto_discovery/_no_wait" 
+    // is available on iroh_gossip::net::Gossip
+    let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
-        .await?
-        .split().await?;
+        .await?;
 
-    println!("Joined topic");
+    println!("[joined topic]");
 
+    // Do something with the gossip topic
+    // (bonus: GossipSender and GossipReceiver are safely clonable)
+    let (_gossip_sender, _gossip_receiver) = topic.split().await?;
+    
     Ok(())
 }
+
 ```
+
+## Protocol Info
+- Protocol details (spec): [PROTOCOL.md](/PROTOCOL.md)
+- Architecture (illustrative): [ARCHITECTURE.md](/ARCHITECTURE.md)
+- Feedback issue: https://github.com/rustonbsd/distributed-topic-tracker-exp/issues/5
+
+
+## Features
+
+- Fully decentralized bootstrap for iroh-gossip
+- Ed25519-based signing and hpke shared-secret-based encryption
+- DHT rate limiting (caps per-minute records)
+- Resilient bootstrap with retries and jitter
+- Background publisher with bubble detection and peer merging
+
+
 
 ## Testing
 
@@ -116,8 +116,9 @@ The e2e test verifies that multiple nodes can discover each other through the DH
 - [x] Finalize crate name and publish to crates.io
 - [x] Tests and CI
 - [x] Add more examples
+- [x] Optimize configuration settings
+- [x] Major refactor
 - [ ] Docs (api)
-- [ ] Optimize configuration settings
 
 ## License
 

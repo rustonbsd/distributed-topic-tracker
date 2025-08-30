@@ -71,26 +71,23 @@ impl Topic {
             }
         });
 
-        if async_bootstrap {
-            tokio::spawn({
-                let bootstrap = bootstrap.clone();
-                async move {
-                    let _ = bootstrap.bootstrap().await;
-                }
-            });
-        } else {
-            bootstrap.bootstrap().await?;
+        let bootstrap_done = bootstrap.bootstrap().await?;
+        if !async_bootstrap {
+            bootstrap_done.await?;
         }
 
         // Spawn publisher after bootstrap
-        api.call(move |actor| Box::pin(actor.start_publishing()))
-            .await?;
+        let _ = api
+            .call(move |actor| Box::pin(actor.start_publishing()))
+            .await;
 
-        api.call(move |actor| Box::pin(actor.start_bubble_merge()))
-            .await?;
+        let _ = api
+            .call(move |actor| Box::pin(actor.start_bubble_merge()))
+            .await;
 
-        api.call(move |actor| Box::pin(actor.start_message_overlap_merge()))
-            .await?;
+        let _ = api
+            .call(move |actor| Box::pin(actor.start_message_overlap_merge()))
+            .await;
 
         Ok(Self { api })
     }
