@@ -6,7 +6,7 @@ use rand::seq::SliceRandom;
 
 #[derive(Debug, Clone)]
 pub struct GossipSender {
-    handle: Handle<GossipSenderActor>,
+    api: Handle<GossipSenderActor>,
     _gossip: iroh_gossip::net::Gossip,
 }
 
@@ -68,13 +68,13 @@ impl GossipSender {
         });
 
         Self {
-            handle: api,
+            api,
             _gossip: gossip,
         }
     }
 
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
-        self.handle
+        self.api
             .call(move |actor| Box::pin(actor.broadcast(data)))
             .await
     }
@@ -90,7 +90,7 @@ impl GossipSender {
             peers.truncate(max_peers);
         }
 
-        self.handle
+        self.api
             .call(move |actor| Box::pin(actor.join_peers(peers)))
             .await
     }

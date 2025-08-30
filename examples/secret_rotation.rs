@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
         Some(RotationHandle::new(MySecretRotation)),
         initial_secret,
     );
-    let (sink, stream) = gossip
+    let (gossip_sender, gossip_receiver) = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?
         .split().await?;
@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
 
     // Spawn listener for incoming messages
     tokio::spawn(async move {
-        while let Some(Ok(event)) = stream.next().await {
+        while let Some(Ok(event)) = gossip_receiver.next().await {
             if let Event::Received(msg) = event {
                 println!(
                     "\nMessage from {}: {}",
@@ -87,7 +87,7 @@ async fn main() -> Result<()> {
     loop {
         print!("\n> ");
         stdin.read_line(&mut buffer).unwrap();
-        sink.broadcast(buffer.clone().replace("\n", "").into())
+        gossip_sender.broadcast(buffer.clone().replace("\n", "").into())
             .await
             .unwrap();
         println!(" - (sent)");

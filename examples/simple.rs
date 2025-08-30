@@ -3,9 +3,7 @@ use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
 // Imports from distrubuted-topic-tracker
-use distributed_topic_tracker::{
-    TopicId, AutoDiscoveryGossip, RecordPublisher,
-};
+use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -20,8 +18,7 @@ async fn main() -> Result<()> {
         .await?;
 
     // Initialize gossip with auto-discovery
-    let gossip = Gossip::builder()
-        .spawn(endpoint.clone());
+    let gossip = Gossip::builder().spawn(endpoint.clone());
 
     // Set up protocol router
     let _router = iroh::protocol::Router::builder(endpoint.clone())
@@ -31,6 +28,8 @@ async fn main() -> Result<()> {
     let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
 
+    // Split into sink (sending) and stream (receiving)
+
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
         endpoint.node_id(),
@@ -38,28 +37,16 @@ async fn main() -> Result<()> {
         None,
         initial_secret,
     );
-    let (gossip_sender, gossip_receiver) = gossip
+
+    let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
-        .await?
-        .split().await?;
-
-    tokio::spawn(async move {
-        while let Some(Ok(event)) = gossip_receiver.next().await {
-            println!("event: {event:?}");
-        }
-    });
-
-
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-    gossip_sender.broadcast(format!("hi from {}",endpoint.node_id()).into()).await?;
+        .await?;
 
     println!("[joined topic]");
 
-    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    // Do something with the gossip topic
+    // (bonus: GossipSender and GossipReceiver are safely clonable)
+    let (_gossip_sender, _gossip_receiver) = topic.split().await?;
 
-    println!("[finished]");
-
-    // successfully joined
-    // exit with code 0
     Ok(())
 }
