@@ -4,14 +4,13 @@ use iroh_gossip::{api::Event, net::Gossip};
 
 // Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{
-    AutoDiscoveryGossip, Dht, RecordPublisher, TopicId
+    AutoDiscoveryGossip, RecordPublisher, TopicId
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Generate a new random secret key
     let secret_key = SecretKey::generate(rand::rngs::OsRng);
-    let dht = Dht::new();
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
@@ -35,7 +34,6 @@ async fn main() -> Result<()> {
     // Split into sink (sending) and stream (receiving)
 
     let record_publisher = RecordPublisher::new(
-        dht,
         topic_id.clone(),
         endpoint.node_id(),
         secret_key.secret().clone(),
