@@ -32,79 +32,65 @@ tokio = "1"
 iroh = "*"
 iroh-gossip = "*"
 
-distributed-topic-tracker = "0.1.3"
+distributed-topic-tracker = "0.1.4"
 ```
 
-Chat example:
+Simple iroh-gossip integration example:
 
 ```rust
 use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
-use iroh_gossip::{api::Event, net::Gossip};
+use iroh_gossip::net::Gossip;
 
-// Crate imports
+// Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{
-    AutoDiscoveryBuilder, AutoDiscoveryGossip, DefaultSecretRotation, TopicId,
+    TopicId, AutoDiscoveryGossip, RecordPublisher, Dht,
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Generate a fresh node key
+    // Generate a new random secret key
     let secret_key = SecretKey::generate(rand::rngs::OsRng);
+    let dht = Dht::new();
 
-    // Endpoint with discovery enabled
+    // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
-        .secret_key(secret_key)
+        .secret_key(secret_key.clone())
         .discovery_n0()
         .bind()
         .await?;
 
-    // Gossip with auto-discovery
+    // Initialize gossip with auto-discovery
     let gossip = Gossip::builder()
-        .spawn_with_auto_discovery::<DefaultSecretRotation>(endpoint.clone(), None)
-        .await?;
+        .spawn(endpoint.clone());
 
-    // Protocol router
+    // Set up protocol router
     let _router = iroh::protocol::Router::builder(endpoint.clone())
-        .accept(iroh_gossip::ALPN, gossip.gossip.clone())
+        .accept(iroh_gossip::ALPN, gossip.clone())
         .spawn();
 
-    // Topic and initial shared secret (pre-agreed out of band)
     let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
 
-    // Join + subscribe
-    let (sink, mut stream) = gossip
-        .subscribe_and_join_with_auto_discovery(topic_id, &initial_secret)
+    // 
+    let record_publisher = RecordPublisher::new(
+        dht,
+        topic_id.clone(),
+        endpoint.node_id(),
+        secret_key.secret().clone(),
+        None,
+        initial_secret,
+    );
+        
+    // Split into sink (sending) and stream (receiving)
+    let (gossip_sender, gossip_receiver) = gossip
+        .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?
-        .split();
+        .split().await?;
 
-    // Listener for incoming events
-    tokio::spawn(async move {
-        while let Ok(event) = stream.recv().await {
-            if let Event::Received(msg) = event {
-                let from = &msg.delivered_from.to_string();
-                let from_short = &from[0..8];
-                let body = String::from_utf8(msg.content.to_vec()).unwrap();
-                println!("\nMessage from {}: {}", from_short, body);
-            } else if let Event::NeighborUp(peer) = event {
-                let peer_short = &peer.to_string()[0..8];
-                println!("\nJoined by {}", peer_short);
-            }
-        }
-    });
+    println!("Joined topic");
 
-    // Simple stdin loop
-    let mut buffer = String::new();
-    let stdin = std::io::stdin();
-    loop {
-        print!("\n> ");
-        stdin.read_line(&mut buffer).unwrap();
-        let msg = buffer.clone().replace('\n', "");
-        sink.broadcast(msg.into()).await.unwrap();
-        print!(" - (sent)\n");
-        buffer.clear();
-    }
+    Ok(())
 }
 ```
 

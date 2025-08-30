@@ -35,7 +35,6 @@ pub struct RecordPublisher {
 
 impl RecordPublisher {
     pub fn new(
-        dht: crate::dht::Dht,
         topic_id: crate::topic::topic::TopicId,
         node_id: iroh::NodeId,
         signing_key: mainline::SigningKey,
@@ -49,7 +48,7 @@ impl RecordPublisher {
             .expect("hashing failed");
 
         Self {
-            dht,
+            dht: crate::dht::Dht::new(),
             topic_id,
             node_id,
             signing_key,
