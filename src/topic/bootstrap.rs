@@ -162,11 +162,13 @@ impl BootstrapActor {
             // Maybe in the meantime someone connected to us via one of our published records
             // we don't want to disrup the gossip rotations any more then we have to
             // so we check again before joining new peers
+            /*
             println!(
                 "checking if joined before joining peers: {}",
                 gossip_receiver.neighbors().await.len()
             );
             println!("bootstrap_records: {}", bootstrap_nodes.len());
+            */
             if gossip_receiver.is_joined().await {
                 break;
             }
@@ -177,13 +179,13 @@ impl BootstrapActor {
                 match gossip_sender.join_peers(vec![*node_id], None).await {
                     Ok(_) => {
                         sleep(Duration::from_millis(100)).await;
-                        println!("joined peer: {}", node_id);
+                        //println!("joined peer: {}", node_id);
                         if gossip_receiver.is_joined().await {
                             break;
                         }
                     }
                     Err(_) => {
-                        println!("failed to join peers");
+                        //println!("failed to join peers");
                         continue;
                     }
                 }
