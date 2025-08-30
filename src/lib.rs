@@ -1,726 +1,45 @@
-pub mod actor;
-pub mod crypto;
-pub mod dht;
-pub mod gossip;
-pub mod topic;
+mod actor;
+mod crypto;
+mod dht;
+mod gossip;
+mod topic;
 
-pub use gossip::sender;
+pub use crypto::keys::{DefaultSecretRotation,RotationHandle,SecretRotation,signing_keypair,encryption_keypair,salt};
+pub use crypto::record::{Record,EncryptedRecord, RecordPublisher};
+pub use topic::topic::{Topic, TopicId};
+pub use gossip::sender::GossipSender;
+pub use gossip::receiver::GossipReceiver;
+pub use dht::Dht;
 
-use std::{collections::HashSet, time::Duration};
-
+use iroh_gossip::net::Gossip;
 use anyhow::Result;
-use iroh::Endpoint;
-use once_cell::sync::Lazy;
-use sha2::Digest;
 
-use tokio::time::sleep;
-
-use crate::{
-    crypto::record::{EncryptedRecord, Record},
-    dht::Dht,
-    gossip::{reader::GossipReceiver, sender::GossipSender},
-};
 
 pub const MAX_JOIN_PEERS_COUNT: usize = 30;
 pub const MAX_BOOTSTRAP_RECORDS: usize = 10;
-
-static DHT: Lazy<Dht> = Lazy::new(|| Dht::new());
-
-fn get_dht() -> Dht {
-    DHT.clone()
-}
-
-pub struct Gossip {
-    pub gossip: iroh_gossip::net::Gossip,
-    endpoint: iroh::Endpoint,
-    secret_rotation_function: crate::crypto::keys::RotationHandle,
-}
-
-#[derive(Debug)]
-pub struct Topic {
-    topic_id: TopicId,
-    gossip_sender: GossipSender,
-    gossip_receiver: GossipReceiver,
-    _gossip: iroh_gossip::net::Gossip,
-    initial_secret_hash: [u8; 32],
-    secret_rotation_function: crate::crypto::keys::RotationHandle,
-    node_id: iroh::NodeId,
-}
-
-#[derive(Debug, Clone)]
-pub struct TopicId {
-    _raw: String,
-    hash: [u8; 32], // sha512( raw )[..32]
-}
-
-impl TopicId {
-    pub fn new(raw: String) -> Self {
-        let mut raw_hash = sha2::Sha512::new();
-        raw_hash.update(raw.as_bytes());
-
-        Self {
-            _raw: raw,
-            hash: raw_hash.finalize()[..32]
-                .try_into()
-                .expect("hashing 'raw' failed"),
-        }
-    }
-}
-
-// State: new, split, spawn_publisher
-impl Topic {
-    pub async fn new(
-        topic_id: TopicId,
-        endpoint: &iroh::Endpoint,
-        node_signing_key: &ed25519_dalek::SigningKey,
-        gossip: iroh_gossip::net::Gossip,
-        initial_secret: &Vec<u8>,
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-        async_bootstrap: bool,
-    ) -> Result<Self> {
-        // Create secret_hash
-        let mut initial_secret_hash = sha2::Sha512::new();
-        initial_secret_hash.update(initial_secret);
-        let initial_secret_hash: [u8; 32] = initial_secret_hash.finalize()[..32]
-            .try_into()
-            .expect("hashing failed");
-
-        // Bootstrap to get gossip tx/rx
-        let (gossip_tx, gossip_rx) = if async_bootstrap {
-            Self::bootstrap_no_wait(
-                topic_id.clone(),
-                endpoint,
-                node_signing_key,
-                gossip.clone(),
-                initial_secret_hash,
-                secret_rotation_function.clone(),
-            )
-            .await?
-        } else {
-            Self::bootstrap(
-                topic_id.clone(),
-                endpoint,
-                node_signing_key,
-                gossip.clone(),
-                initial_secret_hash,
-                secret_rotation_function.clone(),
-            )
-            .await?
-        };
-
-        // Spawn publisher
-        let _join_handler = Self::spawn_publisher(
-            topic_id.clone(),
-            secret_rotation_function.clone(),
-            initial_secret_hash,
-            endpoint.node_id(),
-            gossip_rx.clone(),
-            gossip_tx.clone(),
-            node_signing_key.clone(),
-        );
-
-        Ok(Self {
-            topic_id,
-            gossip_sender: gossip_tx,
-            gossip_receiver: gossip_rx,
-            _gossip: gossip,
-            initial_secret_hash,
-            secret_rotation_function: secret_rotation_function.unwrap_or_default(),
-            node_id: endpoint.node_id(),
-        })
-    }
-
-    pub fn split(&self) -> (GossipSender, GossipReceiver) {
-        (self.gossip_sender.clone(), self.gossip_receiver.clone())
-    }
-
-    pub fn topic_id(&self) -> &TopicId {
-        &self.topic_id
-    }
-
-    pub fn node_id(&self) -> &iroh::NodeId {
-        &self.node_id
-    }
-
-    pub fn gossip_sender(&self) -> GossipSender {
-        self.gossip_sender.clone()
-    }
-
-    pub fn gossip_receiver(&self) -> GossipReceiver {
-        self.gossip_receiver.clone()
-    }
-
-    pub fn secret_rotation_function(&self) -> crate::crypto::keys::RotationHandle {
-        self.secret_rotation_function.clone()
-    }
-
-    pub fn initial_secret_hash(&self) -> [u8; 32] {
-        self.initial_secret_hash
-    }
-
-    pub fn set_initial_secret_hash(&mut self, initial_secret_hash: [u8; 32]) {
-        self.initial_secret_hash = initial_secret_hash;
-    }
-}
-
-// Procedures: Bootstrap, Publishing, Publisher
-impl Topic {
-    pub async fn bootstrap_no_wait(
-        topic_id: TopicId,
-        endpoint: &iroh::Endpoint,
-        node_signing_key: &ed25519_dalek::SigningKey,
-        gossip: iroh_gossip::net::Gossip,
-        initial_secret_hash: [u8; 32],
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-    ) -> Result<(GossipSender, GossipReceiver)> {
-        let gossip_topic: iroh_gossip::api::GossipTopic = gossip
-            .subscribe(iroh_gossip::proto::TopicId::from(topic_id.hash), vec![])
-            .await?;
-        let (gossip_sender, gossip_receiver) = gossip_topic.split();
-        let (gossip_sender, gossip_receiver) = (
-            GossipSender::new(gossip_sender, gossip.clone()),
-            GossipReceiver::new(gossip_receiver, gossip.clone()),
-        );
-
-        tokio::spawn({
-            let gossip_sender = gossip_sender.clone();
-            let gossip_receiver = gossip_receiver.clone();
-            let endpoint = endpoint.clone();
-            let node_signing_key = node_signing_key.clone();
-            async move {
-                Self::bootstrap_from_gossip(
-                    gossip_sender,
-                    gossip_receiver,
-                    topic_id,
-                    &endpoint,
-                    &node_signing_key,
-                    initial_secret_hash,
-                    secret_rotation_function,
-                )
-                .await
-            }
-        });
-
-        Ok((gossip_sender, gossip_receiver))
-    }
-
-    pub async fn bootstrap(
-        topic_id: TopicId,
-        endpoint: &iroh::Endpoint,
-        node_signing_key: &ed25519_dalek::SigningKey,
-        gossip: iroh_gossip::net::Gossip,
-        initial_secret_hash: [u8; 32],
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-    ) -> Result<(GossipSender, GossipReceiver)> {
-        let gossip_topic: iroh_gossip::api::GossipTopic = gossip
-            .subscribe(iroh_gossip::proto::TopicId::from(topic_id.hash), vec![])
-            .await?;
-        let (gossip_sender, gossip_receiver) = gossip_topic.split();
-        let (gossip_sender, gossip_receiver) = (
-            GossipSender::new(gossip_sender, gossip.clone()),
-            GossipReceiver::new(gossip_receiver, gossip.clone()),
-        );
-        let res = Self::bootstrap_from_gossip(
-            gossip_sender,
-            gossip_receiver,
-            topic_id,
-            endpoint,
-            node_signing_key,
-            initial_secret_hash,
-            secret_rotation_function,
-        )
-        .await;
-        println!("bootstrap done: {:?}", res);
-        res
-    }
-
-    async fn bootstrap_from_gossip(
-        gossip_sender: GossipSender,
-        gossip_receiver: GossipReceiver,
-        topic_id: TopicId,
-        endpoint: &iroh::Endpoint,
-        node_signing_key: &ed25519_dalek::SigningKey,
-        initial_secret_hash: [u8; 32],
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-    ) -> Result<(GossipSender, GossipReceiver)> {
-        let mut last_published_unix_minute = 0;
-        loop {
-            // Check if we are connected to at least one node
-            if gossip_receiver.is_joined().await {
-                return Ok((gossip_sender, gossip_receiver));
-            }
-
-            // On the first try we check the prev unix minute, after that the current one
-            let unix_minute = crate::unix_minute(if last_published_unix_minute == 0 {
-                -1
-            } else {
-                0
-            });
-
-            // Unique, verified records for the unix minute
-            let records = Topic::get_unix_minute_records(
-                topic_id.clone(),
-                unix_minute,
-                secret_rotation_function.clone(),
-                initial_secret_hash,
-                endpoint.node_id(),
-            )
-            .await;
-
-            // If there are no records, invoke the publish_proc (the publishing procedure)
-            // continue the loop after
-            if records.is_empty() {
-                if unix_minute != last_published_unix_minute {
-                    last_published_unix_minute = unix_minute;
-                    tokio::spawn({
-                        let topic_id = topic_id.clone();
-                        let node_id = endpoint.node_id();
-                        let node_signing_key = node_signing_key.clone();
-                        let secret_rotation_function = secret_rotation_function.clone();
-                        async move {
-                            let _ = Self::publish_proc(
-                                unix_minute,
-                                &topic_id,
-                                secret_rotation_function,
-                                initial_secret_hash,
-                                node_id,
-                                &node_signing_key,
-                                HashSet::new(),
-                                vec![],
-                            )
-                            .await;
-                        }
-                    });
-                }
-                sleep(Duration::from_millis(100)).await;
-                continue;
-            }
-
-            // We found records
-
-            // Collect node ids from active_peers and record.node_id (of publisher)
-            let bootstrap_nodes = records
-                .iter()
-                .flat_map(|record| {
-                    let mut v = vec![record.node_id()];
-                    for peer in record.active_peers() {
-                        if peer != [0; 32] {
-                            v.push(peer);
-                        }
-                    }
-                    v
-                })
-                .filter_map(|node_id| iroh::NodeId::from_bytes(&node_id).ok())
-                .collect::<HashSet<_>>();
-
-            // Maybe in the meantime someone connected to us via one of our published records
-            // we don't want to disrup the gossip rotations any more then we have to
-            // so we check again before joining new peers
-            println!(
-                "checking if joined before joining peers: {}",
-                gossip_receiver.neighbors().await.len()
-            );
-            println!("bootstrap_records: {}", bootstrap_nodes.len());
-            if gossip_receiver.is_joined().await {
-                return Ok((gossip_sender, gossip_receiver));
-            }
-
-            // Instead of throwing everything into join_peers() at once we go node_id by node_id
-            // again to disrupt as little nodes peer neighborhoods as possible.
-            for node_id in bootstrap_nodes.iter() {
-                match gossip_sender.join_peers(vec![*node_id], None).await {
-                    Ok(_) => {
-                        sleep(Duration::from_millis(100)).await;
-                        println!("joined peer: {}", node_id);
-                        if gossip_receiver.is_joined().await {
-                            break;
-                        }
-                    }
-                    Err(_) => {
-                        println!("failed to join peers");
-                        continue;
-                    }
-                }
-            }
-
-            // If we are still not connected to anyone:
-            // give it the default iroh-gossip connection timeout before the final is_joined() check
-            if !gossip_receiver.is_joined().await {
-                sleep(Duration::from_millis(500)).await;
-            }
-
-            // If we are connected: return
-            if gossip_receiver.is_joined().await {
-                return Ok((gossip_sender, gossip_receiver));
-            } else {
-                // If we are not connected: check if we should publish a record this minute
-                if unix_minute != last_published_unix_minute {
-                    last_published_unix_minute = unix_minute;
-                    tokio::spawn({
-                        let topic_id = topic_id.clone();
-                        let node_id = endpoint.node_id();
-                        let node_signing_key = node_signing_key.clone();
-                        let secret_rotation_function = secret_rotation_function.clone();
-                        async move {
-                            let _ = Self::publish_proc(
-                                unix_minute,
-                                &topic_id,
-                                secret_rotation_function,
-                                initial_secret_hash,
-                                node_id,
-                                &node_signing_key,
-                                HashSet::new(),
-                                vec![],
-                            )
-                            .await;
-                        }
-                    });
-                }
-                sleep(Duration::from_millis(100)).await;
-                continue;
-            }
-        }
-    }
-
-    // publishing procedure: if more then MAX_BOOTSTRAP_RECORDS are written, don't write.
-    // returns all valid records found from nodes already connected to the iroh-gossip network.
-    #[allow(clippy::too_many_arguments)]
-    async fn publish_proc(
-        unix_minute: u64,
-        topic_id: &TopicId,
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-        initial_secret_hash: [u8; 32],
-        node_id: iroh::NodeId,
-        node_signing_key: &ed25519_dalek::SigningKey,
-        neighbors: HashSet<iroh::NodeId>,
-        last_message_hashes: Vec<[u8; 32]>,
-    ) -> Result<HashSet<Record>> {
-        // Get verified records that have active_peers or last_message_hashes set (active participants)
-        let records = Topic::get_unix_minute_records(
-            topic_id.clone(),
-            unix_minute,
-            secret_rotation_function.clone(),
-            initial_secret_hash,
-            node_id,
-        )
-        .await
-        .iter()
-        .filter(|&record| {
-            record
-                .active_peers()
-                .iter()
-                .filter(|&peer| peer.eq(&[0u8; 32]))
-                .count()
-                > 0
-                || record
-                    .last_message_hashes()
-                    .iter()
-                    .filter(|&hash| hash.eq(&[0u8; 32]))
-                    .count()
-                    > 0
-        })
-        .cloned()
-        .collect::<HashSet<_>>();
-
-        // Don't publish if there are more then MAX_BOOTSTRAP_RECORDS already written
-        // that either have active_peers or last_message_hashes set (active participants)
-        if records.len() >= MAX_BOOTSTRAP_RECORDS {
-            return Ok(records);
-        }
-
-        // Publish own records
-        let mut active_peers: [[u8; 32]; 5] = [[0; 32]; 5];
-        for (i, peer) in neighbors.iter().take(5).enumerate() {
-            active_peers[i] = *peer.as_bytes()
-        }
-
-        let mut last_message_hashes_array = [[0u8; 32]; 5];
-        for (i, hash) in last_message_hashes.iter().take(5).enumerate() {
-            last_message_hashes_array[i] = *hash;
-        }
-
-        let record = Record::sign(
-            topic_id.hash,
-            unix_minute,
-            *node_id.as_bytes(),
-            active_peers,
-            last_message_hashes_array,
-            node_signing_key,
-        );
-        Topic::publish_unix_minute_record(
-            unix_minute,
-            &topic_id.clone(),
-            secret_rotation_function.clone(),
-            initial_secret_hash,
-            record,
-            Some(3),
-        )
-        .await?;
-
-        Ok(records)
-    }
-
-    // Runs after bootstrap to keep anouncing the topic on mainline and help identify and merge network bubbles
-    fn spawn_publisher(
-        topic_id: TopicId,
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-        initial_secret_hash: [u8; 32],
-        node_id: iroh::NodeId,
-        gossip_receiver: GossipReceiver,
-        gossip_sender: GossipSender,
-        node_signing_key: ed25519_dalek::SigningKey,
-    ) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            let mut backoff = 1;
-            loop {
-                let unix_minute = crate::unix_minute(0);
-
-                // Run publish_proc() (publishing procedure that is aware of MAX_BOOTSTRAP_RECORDS already written)
-                if let Ok(records) = Topic::publish_proc(
-                    unix_minute,
-                    &topic_id.clone(),
-                    Some(secret_rotation_function.clone().unwrap_or_default()),
-                    initial_secret_hash,
-                    node_id,
-                    &node_signing_key,
-                    gossip_receiver.neighbors().await,
-                    gossip_receiver.last_message_hashes().await,
-                )
-                .await
-                {
-                    // Cluster size as bubble indicator
-                    let neighbors = gossip_receiver.neighbors().await;
-                    if neighbors.len() < 4 && !records.is_empty() {
-                        let node_ids = records
-                            .iter()
-                            .flat_map(|record| {
-                                record
-                                    .active_peers()
-                                    .iter()
-                                    .filter_map(|&active_peer| {
-                                        if active_peer == [0; 32]
-                                            || neighbors.contains(&active_peer)
-                                            || active_peer.eq(record.node_id().to_vec().as_slice())
-                                            || active_peer.eq(node_id.as_bytes())
-                                        {
-                                            None
-                                        } else {
-                                            iroh::NodeId::from_bytes(&active_peer).ok()
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
-                            .collect::<HashSet<_>>();
-                        if gossip_sender
-                            .join_peers(
-                                node_ids.iter().cloned().collect::<Vec<_>>(),
-                                Some(MAX_JOIN_PEERS_COUNT),
-                            )
-                            .await
-                            .is_ok()
-                        {
-                            //println!("group-merger -> joined peer {}", node_id);
-                        }
-                    }
-
-                    // Message overlap indicator
-                    if !gossip_receiver.last_message_hashes().await.is_empty() {
-                        let last_message_hashes = gossip_receiver.last_message_hashes().await;
-                        let peers_to_join = records
-                            .iter()
-                            .filter(|record| {
-                                !record
-                                    .last_message_hashes()
-                                    .iter()
-                                    .all(|last_message_hash| {
-                                        *last_message_hash != [0; 32]
-                                            && last_message_hashes.contains(last_message_hash)
-                                    })
-                            })
-                            .collect::<Vec<_>>();
-                        if !peers_to_join.is_empty() {
-                            let node_ids = peers_to_join
-                                .iter()
-                                .flat_map(|&record| {
-                                    let mut peers = vec![];
-                                    if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id())
-                                    {
-                                        peers.push(node_id);
-                                    }
-                                    for active_peer in record.active_peers() {
-                                        if active_peer == [0; 32] {
-                                            continue;
-                                        }
-                                        if let Ok(node_id) = iroh::NodeId::from_bytes(&active_peer)
-                                        {
-                                            peers.push(node_id);
-                                        }
-                                    }
-                                    peers
-                                })
-                                .collect::<HashSet<_>>();
-
-                            if gossip_sender
-                                .join_peers(
-                                    node_ids.iter().cloned().collect::<Vec<_>>(),
-                                    Some(MAX_JOIN_PEERS_COUNT),
-                                )
-                                .await
-                                .is_ok()
-                            {
-                                /*println!(
-                                    "bouble detected: no-message-overlap -> joined {} peers",
-                                    node_ids.len()
-                                );*/
-                            }
-                        }
-                    }
-                } else {
-                    sleep(Duration::from_secs(backoff)).await;
-                    backoff = (backoff * 2).max(60);
-                    continue;
-                }
-
-                backoff = 1;
-                sleep(Duration::from_secs(rand::random::<u64>() % 60)).await;
-            }
-        })
-    }
-}
-
-// Basic building blocks
-impl Topic {
-    async fn get_unix_minute_records(
-        topic_id: TopicId,
-        unix_minute: u64,
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-        initial_secret_hash: [u8; 32],
-        node_id: iroh::NodeId,
-    ) -> HashSet<Record> {
-        let topic_sign = crate::crypto::keys::signing_keypair(&topic_id, unix_minute);
-        let encryption_key = crate::crypto::keys::encryption_keypair(
-            &topic_id,
-            &secret_rotation_function.clone().unwrap_or_default(),
-            initial_secret_hash,
-            unix_minute,
-        );
-        let salt = crate::crypto::keys::salt(&topic_id, unix_minute);
-
-        // Get records, decrypt and verify
-        let dht = get_dht();
-
-        let records_iter = dht
-            .get(
-                topic_sign.verifying_key().into(),
-                Some(salt.to_vec()),
-                None,
-                Duration::from_secs(10),
-            )
-            .await
-            .unwrap_or_default();
-
-        records_iter
-            .iter()
-            .filter_map(
-                |record| match EncryptedRecord::from_bytes(record.value().to_vec()) {
-                    Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
-                        Ok(record) => match record.verify(&topic_id.hash, unix_minute) {
-                            Ok(_) => match record.node_id().eq(node_id.as_bytes()) {
-                                true => None,
-                                false => Some(record),
-                            },
-                            Err(_) => None,
-                        },
-                        Err(_) => None,
-                    },
-                    Err(_) => None,
-                },
-            )
-            .collect::<HashSet<_>>()
-    }
-
-    async fn publish_unix_minute_record(
-        unix_minute: u64,
-        topic_id: &TopicId,
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-        initial_secret_hash: [u8; 32],
-        record: Record,
-        retry_count: Option<usize>,
-    ) -> Result<()> {
-        let sign_key = crypto::keys::signing_keypair(&topic_id.clone(), unix_minute);
-        let salt = crypto::keys::salt(topic_id, unix_minute);
-        let encryption_key = crypto::keys::encryption_keypair(
-            &topic_id.clone(),
-            &secret_rotation_function.clone().unwrap_or_default(),
-            initial_secret_hash,
-            unix_minute,
-        );
-        let encrypted_record = record.encrypt(&encryption_key);
-        let dht = get_dht();
-        dht.put_mutable(
-            sign_key.clone(),
-            sign_key.verifying_key().into(),
-            Some(salt.to_vec()),
-            encrypted_record.to_bytes().to_vec(),
-            retry_count,
-            Duration::from_secs(10),
-        )
-        .await
-    }
-}
-
-pub trait AutoDiscoveryBuilder {
-    #[allow(async_fn_in_trait)]
-    async fn spawn_with_auto_discovery(
-        self,
-        endpoint: Endpoint,
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-    ) -> Result<Gossip>;
-}
-
-impl AutoDiscoveryBuilder for iroh_gossip::net::Builder {
-    async fn spawn_with_auto_discovery(
-        self,
-        endpoint: Endpoint,
-        secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
-    ) -> Result<Gossip> {
-        Ok(Gossip {
-            gossip: self.spawn(endpoint.clone()),
-            endpoint: endpoint.clone(),
-            secret_rotation_function: secret_rotation_function.unwrap_or_default(),
-        })
-    }
-}
 
 pub trait AutoDiscoveryGossip {
     #[allow(async_fn_in_trait)]
     async fn subscribe_and_join_with_auto_discovery(
         &self,
-        topic_id: TopicId,
-        initial_secret: Vec<u8>,
+        record_publisher: RecordPublisher,
     ) -> Result<Topic>;
 
     #[allow(async_fn_in_trait)]
     async fn subscribe_and_join_with_auto_discovery_no_wait(
         &self,
-        topic_id: TopicId,
-        initial_secret: Vec<u8>,
+        record_publisher: RecordPublisher,
     ) -> Result<Topic>;
 }
 
 impl AutoDiscoveryGossip for Gossip {
     async fn subscribe_and_join_with_auto_discovery(
         &self,
-        topic_id: TopicId,
-        initial_secret: Vec<u8>,
+        record_publisher: RecordPublisher,
     ) -> Result<Topic> {
         Topic::new(
-            topic_id,
-            &self.endpoint,
-            self.endpoint.secret_key().secret(),
-            self.gossip.clone(),
-            &initial_secret,
-            Some(self.secret_rotation_function.clone()),
+            record_publisher,
+            self.clone(),
             false,
         )
         .await
@@ -728,16 +47,11 @@ impl AutoDiscoveryGossip for Gossip {
 
     async fn subscribe_and_join_with_auto_discovery_no_wait(
         &self,
-        topic_id: TopicId,
-        initial_secret: Vec<u8>,
+        record_publisher: RecordPublisher,
     ) -> Result<Topic> {
         Topic::new(
-            topic_id,
-            &self.endpoint,
-            self.endpoint.secret_key().secret(),
-            self.gossip.clone(),
-            &initial_secret,
-            Some(self.secret_rotation_function.clone()),
+            record_publisher,
+            self.clone(),
             true,
         )
         .await
@@ -750,7 +64,7 @@ pub fn unix_minute(minute_offset: i64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::crypto::keys::{DefaultSecretRotation, RotationHandle};
+    use crate::{crypto::{keys::{DefaultSecretRotation, RotationHandle}, record::{EncryptedRecord, Record}}, topic::topic::TopicId};
 
     use super::*;
     use ed25519_dalek::SigningKey;
@@ -759,16 +73,16 @@ mod tests {
     #[test]
     fn test_topic_id_creation() {
         let topic_id = TopicId::new("test-topic".to_string());
-        assert_eq!(topic_id._raw, "test-topic");
-        assert_eq!(topic_id.hash.len(), 32);
+        assert_eq!(topic_id.raw(), "test-topic");
+        assert_eq!(topic_id.hash().len(), 32);
 
         // Same input should produce same hash
         let topic_id2 = TopicId::new("test-topic".to_string());
-        assert_eq!(topic_id.hash, topic_id2.hash);
+        assert_eq!(topic_id.hash(), topic_id2.hash());
 
         // Different input should produce different hash
         let topic_id3 = TopicId::new("different-topic".to_string());
-        assert_ne!(topic_id.hash, topic_id3.hash);
+        assert_ne!(topic_id.hash(), topic_id3.hash());
     }
 
     #[test]

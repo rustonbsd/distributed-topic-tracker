@@ -6,10 +6,11 @@ use tokio::time::sleep;
 use crate::{
     actor::{Action, Actor, Handle},
     crypto::record::Record,
-    gossip::reader::GossipReceiver,
-    sender::GossipSender,
+    gossip::receiver::GossipReceiver,
+    GossipSender,
 };
 
+#[derive(Clone)]
 pub struct Bootstrap {
     api: Handle<BootstrapActor>,
 }
@@ -17,7 +18,7 @@ pub struct Bootstrap {
 struct BootstrapActor {
     rx: tokio::sync::mpsc::Receiver<Action<Self>>,
 
-    record_creator: crate::crypto::record::RecordCreator,
+    record_publisher: crate::crypto::record::RecordPublisher,
 
     gossip_sender: GossipSender,
     gossip_receiver: GossipReceiver,
@@ -25,12 +26,12 @@ struct BootstrapActor {
 
 impl Bootstrap {
     pub async fn new(
-        record_creator: crate::crypto::record::RecordCreator,
+        record_publisher: crate::crypto::record::RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
     ) -> Result<Self> {
         let gossip_topic: iroh_gossip::api::GossipTopic = gossip
             .subscribe(
-                iroh_gossip::proto::TopicId::from(record_creator.topic_id().hash),
+                iroh_gossip::proto::TopicId::from(record_publisher.topic_id().hash()),
                 vec![],
             )
             .await?;
@@ -45,7 +46,7 @@ impl Bootstrap {
         tokio::spawn(async move {
             let mut actor = BootstrapActor {
                 rx,
-                record_creator,
+                record_publisher,
                 gossip_sender,
                 gossip_receiver,
             };
@@ -65,6 +66,18 @@ impl Bootstrap {
                 .call(move |actor| Box::pin(actor.gossip_receiver()))
                 .await?,
         ))
+    }
+
+    pub async fn gossip_sender(&self) -> Result<GossipSender> {
+        self.api
+            .call(move |actor| Box::pin(actor.gossip_sender()))
+            .await
+    }
+
+    pub async fn gossip_receiver(&self) -> Result<GossipReceiver> {
+        self.api
+            .call(move |actor| Box::pin(actor.gossip_receiver()))
+            .await
     }
 }
 
@@ -103,14 +116,7 @@ impl BootstrapActor {
             });
 
             // Unique, verified records for the unix minute
-            let records = crate::Topic::get_unix_minute_records(
-                self.record_creator.topic_id(),
-                unix_minute,
-                self.record_creator.secret_rotation(),
-                self.record_creator.initial_secret_hash(),
-                self.record_creator.endpoint().node_id(),
-            )
-            .await;
+            let records = self.record_publisher.get_records(unix_minute).await;
 
             // If there are no records, invoke the publish_proc (the publishing procedure)
             // continue the loop after
@@ -118,14 +124,14 @@ impl BootstrapActor {
                 if unix_minute != last_published_unix_minute {
                     last_published_unix_minute = unix_minute;
                     tokio::spawn({
-                        let record_creator = self.record_creator.clone();
+                        let record_creator = self.record_publisher.clone();
                         let record = Record::sign(
-                            self.record_creator.topic_id().hash,
+                            self.record_publisher.topic_id().hash(),
                             unix_minute,
-                            self.record_creator.endpoint().node_id().public().to_bytes(),
+                            self.record_publisher.node_id().public().to_bytes(),
                             [[0; 32]; 5],
                             [[0; 32]; 5],
-                            &self.record_creator.signing_key(),
+                            &self.record_publisher.signing_key(),
                         );
                         async move {
                             let _ = record_creator.publish_record(record).await;
@@ -197,14 +203,14 @@ impl BootstrapActor {
                 if unix_minute != last_published_unix_minute {
                     last_published_unix_minute = unix_minute;
                     tokio::spawn({
-                        let record_creator = self.record_creator.clone();
+                        let record_creator = self.record_publisher.clone();
                         let record = Record::sign(
-                            self.record_creator.topic_id().hash,
+                            self.record_publisher.topic_id().hash(),
                             unix_minute,
-                            self.record_creator.endpoint().node_id().public().to_bytes(),
+                            self.record_publisher.node_id().public().to_bytes(),
                             [[0; 32]; 5],
                             [[0; 32]; 5],
-                            &self.record_creator.signing_key(),
+                            &self.record_publisher.signing_key(),
                         );
                         async move {
                             let _ = record_creator.publish_record(record).await;
