@@ -6,16 +6,14 @@ pub mod topic;
 
 pub use gossip::sender;
 
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, time::Duration};
 
-use anyhow::{Result, bail};
-use futures::StreamExt as _;
+use anyhow::Result;
 use iroh::Endpoint;
-use mainline::MutableItem;
 use once_cell::sync::Lazy;
 use sha2::Digest;
 
-use tokio::time::{sleep, timeout};
+use tokio::time::sleep;
 
 use crate::{
     crypto::record::{EncryptedRecord, Record},
@@ -261,11 +259,11 @@ impl Topic {
 
             // Unique, verified records for the unix minute
             let records = Topic::get_unix_minute_records(
-                &topic_id.clone(),
+                topic_id.clone(),
                 unix_minute,
                 secret_rotation_function.clone(),
                 initial_secret_hash,
-                &endpoint.node_id(),
+                endpoint.node_id(),
             )
             .await;
 
@@ -399,11 +397,11 @@ impl Topic {
     ) -> Result<HashSet<Record>> {
         // Get verified records that have active_peers or last_message_hashes set (active participants)
         let records = Topic::get_unix_minute_records(
-            &topic_id.clone(),
+            topic_id.clone(),
             unix_minute,
             secret_rotation_function.clone(),
             initial_secret_hash,
-            &node_id,
+            node_id,
         )
         .await
         .iter()
@@ -593,20 +591,20 @@ impl Topic {
 // Basic building blocks
 impl Topic {
     async fn get_unix_minute_records(
-        topic_id: &TopicId,
+        topic_id: TopicId,
         unix_minute: u64,
         secret_rotation_function: Option<crate::crypto::keys::RotationHandle>,
         initial_secret_hash: [u8; 32],
-        node_id: &iroh::NodeId,
+        node_id: iroh::NodeId,
     ) -> HashSet<Record> {
-        let topic_sign = crate::crypto::keys::signing_keypair(topic_id, unix_minute);
+        let topic_sign = crate::crypto::keys::signing_keypair(&topic_id, unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            topic_id,
+            &topic_id,
             &secret_rotation_function.clone().unwrap_or_default(),
             initial_secret_hash,
             unix_minute,
         );
-        let salt = crate::crypto::keys::salt(topic_id, unix_minute);
+        let salt = crate::crypto::keys::salt(&topic_id, unix_minute);
 
         // Get records, decrypt and verify
         let dht = get_dht();
@@ -752,7 +750,7 @@ pub fn unix_minute(minute_offset: i64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::crypto::keys::{DefaultSecretRotation, RotationHandle, SecretRotation};
+    use crate::crypto::keys::{DefaultSecretRotation, RotationHandle};
 
     use super::*;
     use ed25519_dalek::SigningKey;
