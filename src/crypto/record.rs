@@ -1,8 +1,9 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Duration};
 
 use anyhow::{Result, bail};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
+use iroh::NodeId;
 use sha2::Digest;
 
 #[derive(Debug, Clone)]
@@ -21,19 +22,22 @@ pub struct Record {
     signature: [u8; 64],
 }
 
-#[derive(Debug, Clone)]
-pub struct RecordCreator {
-    topic_id: crate::TopicId,
-    endpoint: iroh::Endpoint,
+#[derive(Debug,Clone)]
+pub struct RecordPublisher {
+    dht: crate::dht::Dht,
+    
+    topic_id: crate::topic::topic::TopicId,
+    node_id: iroh::NodeId,
     signing_key: mainline::SigningKey,
     secret_rotation: Option<crate::crypto::keys::RotationHandle>,
     initial_secret_hash: [u8; 32],
 }
 
-impl RecordCreator {
+impl RecordPublisher {
     pub fn new(
-        topic_id: crate::TopicId,
-        endpoint: iroh::Endpoint,
+        dht: crate::dht::Dht,
+        topic_id: crate::topic::topic::TopicId,
+        node_id: iroh::NodeId,
         signing_key: mainline::SigningKey,
         secret_rotation: Option<crate::crypto::keys::RotationHandle>,
         initial_secret: Vec<u8>,
@@ -45,19 +49,46 @@ impl RecordCreator {
             .expect("hashing failed");
 
         Self {
+            dht,
             topic_id,
-            endpoint,
+            node_id,
             signing_key,
             secret_rotation,
             initial_secret_hash,
         }
     }
 
-    pub fn endpoint(&self) -> iroh::Endpoint {
-        self.endpoint.clone()
+    pub fn new_record(
+        &self,
+        unix_minute: u64,
+        neighbors: Vec<NodeId>,
+        last_message_hashes: Vec<[u8; 32]>,
+    ) -> Record {
+        let mut active_peers: [[u8; 32]; 5] = [[0; 32]; 5];
+        for (i, peer) in neighbors.iter().take(5).enumerate() {
+            active_peers[i] = *peer.as_bytes()
+        }
+
+        let mut last_message_hashes_array = [[0u8; 32]; 5];
+        for (i, hash) in last_message_hashes.iter().take(5).enumerate() {
+            last_message_hashes_array[i] = *hash;
+        } 
+
+        Record::sign(
+            self.topic_id.hash(),
+            unix_minute,
+            self.node_id.public().to_bytes(),
+            active_peers,
+            last_message_hashes_array,
+            &self.signing_key,
+        )
     }
 
-    pub fn topic_id(&self) -> crate::TopicId {
+    pub fn node_id(&self) -> iroh::NodeId {
+        self.node_id.clone()
+    }
+
+    pub fn topic_id(&self) -> crate::topic::topic::TopicId {
         self.topic_id.clone()
     }
 
@@ -74,19 +105,12 @@ impl RecordCreator {
     }
 }
 
-impl RecordCreator {
-    pub async fn publish_record(
-        &self,
-        record: Record,
-    ) -> Result<HashSet<Record>> {
+impl RecordPublisher {
+
+    // returns records it checked before publishing so we don't have to get twice
+    pub async fn publish_record(&self, record: Record) -> Result<HashSet<Record>> {
         // Get verified records that have active_peers or last_message_hashes set (active participants)
-        let records = crate::Topic::get_unix_minute_records(
-            self.topic_id(),
-            record.unix_minute(),
-            self.secret_rotation(),
-            self.initial_secret_hash(),
-            self.endpoint().node_id(),
-        )
+        let records = self.get_records(record.unix_minute())
         .await
         .iter()
         .filter(|&record| {
@@ -113,18 +137,68 @@ impl RecordCreator {
         }
 
         // Publish own records
+        let sign_key = crate::crypto::keys::signing_keypair(&self.topic_id.clone(), record.unix_minute);
+        let salt = crate::crypto::keys::salt(&self.topic_id, record.unix_minute);
+        let encryption_key = crate::crypto::keys::encryption_keypair(
+            &self.topic_id.clone(),
+            &self.secret_rotation.clone().unwrap_or_default(),
+            self.initial_secret_hash,
+            record.unix_minute,
+        );
+        let encrypted_record = record.encrypt(&encryption_key);
         
-        crate::Topic::publish_unix_minute_record(
-            record.unix_minute(),
-            &self.topic_id(),
-            self.secret_rotation(),
-            self.initial_secret_hash(),
-            record,
+        self.dht.put_mutable(
+            sign_key.clone(),
+            sign_key.verifying_key().into(),
+            Some(salt.to_vec()),
+            encrypted_record.to_bytes().to_vec(),
             Some(3),
+            Duration::from_secs(10),
         )
         .await?;
 
         Ok(records)
+    }
+
+    pub async fn get_records(&self, unix_minute: u64) -> HashSet<Record> {
+        let topic_sign = crate::crypto::keys::signing_keypair(&self.topic_id, unix_minute);
+        let encryption_key = crate::crypto::keys::encryption_keypair(
+            &self.topic_id,
+            &self.secret_rotation.clone().unwrap_or_default(),
+            self.initial_secret_hash,
+            unix_minute,
+        );
+        let salt = crate::crypto::keys::salt(&self.topic_id, unix_minute);
+
+        // Get records, decrypt and verify
+        let records_iter = self.dht
+            .get(
+                topic_sign.verifying_key().into(),
+                Some(salt.to_vec()),
+                None,
+                Duration::from_secs(10),
+            )
+            .await
+            .unwrap_or_default();
+
+        records_iter
+            .iter()
+            .filter_map(
+                |record| match EncryptedRecord::from_bytes(record.value().to_vec()) {
+                    Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
+                        Ok(record) => match record.verify(&self.topic_id.hash(), unix_minute) {
+                            Ok(_) => match record.node_id().eq(self.node_id.as_bytes()) {
+                                true => None,
+                                false => Some(record),
+                            },
+                            Err(_) => None,
+                        },
+                        Err(_) => None,
+                    },
+                    Err(_) => None,
+                },
+            )
+            .collect::<HashSet<_>>()
     }
 }
 

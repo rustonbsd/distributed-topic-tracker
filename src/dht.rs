@@ -8,11 +8,12 @@ use mainline::{MutableItem, SigningKey};
 
 const RETRY_DEFAULT: usize = 3;
 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub struct Dht {
     api: Handle<DhtActor>,
 }
 
+#[derive(Debug)]
 struct DhtActor {
     rx: tokio::sync::mpsc::Receiver<Action<Self>>,
     dht: Option<mainline::async_dht::AsyncDht>,
