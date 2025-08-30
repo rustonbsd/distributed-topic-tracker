@@ -108,7 +108,7 @@ impl RecordPublisher {
 impl RecordPublisher {
 
     // returns records it checked before publishing so we don't have to get twice
-    pub async fn publish_record(&self, record: Record) -> Result<HashSet<Record>> {
+    pub async fn publish_record(&self, record: Record) -> Result<()> {
         // Get verified records that have active_peers or last_message_hashes set (active participants)
         let records = self.get_records(record.unix_minute())
         .await
@@ -133,7 +133,7 @@ impl RecordPublisher {
         // Don't publish if there are more then MAX_BOOTSTRAP_RECORDS already written
         // that either have active_peers or last_message_hashes set (active participants)
         if records.len() >= crate::MAX_BOOTSTRAP_RECORDS {
-            return Ok(records);
+            return Ok(());
         }
 
         // Publish own records
@@ -157,7 +157,7 @@ impl RecordPublisher {
         )
         .await?;
 
-        Ok(records)
+        Ok(())
     }
 
     pub async fn get_records(&self, unix_minute: u64) -> HashSet<Record> {

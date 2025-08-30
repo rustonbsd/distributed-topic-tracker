@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
         initial_secret,
     );
     let (sink, stream) = gossip
-        .subscribe_and_join_with_auto_discovery_no_wait(record_publisher)
+        .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?
         .split().await?;
 
