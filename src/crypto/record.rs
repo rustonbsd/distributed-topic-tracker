@@ -1,7 +1,9 @@
-use anyhow::{bail, Result};
+use std::collections::HashSet;
+
+use anyhow::{Result, bail};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
-
+use sha2::Digest;
 
 #[derive(Debug, Clone)]
 pub struct EncryptedRecord {
@@ -19,6 +21,112 @@ pub struct Record {
     signature: [u8; 64],
 }
 
+#[derive(Debug, Clone)]
+pub struct RecordCreator {
+    topic_id: crate::TopicId,
+    endpoint: iroh::Endpoint,
+    signing_key: mainline::SigningKey,
+    secret_rotation: Option<crate::crypto::keys::RotationHandle>,
+    initial_secret_hash: [u8; 32],
+}
+
+impl RecordCreator {
+    pub fn new(
+        topic_id: crate::TopicId,
+        endpoint: iroh::Endpoint,
+        signing_key: mainline::SigningKey,
+        secret_rotation: Option<crate::crypto::keys::RotationHandle>,
+        initial_secret: Vec<u8>,
+    ) -> Self {
+        let mut initial_secret_hash = sha2::Sha512::new();
+        initial_secret_hash.update(initial_secret);
+        let initial_secret_hash: [u8; 32] = initial_secret_hash.finalize()[..32]
+            .try_into()
+            .expect("hashing failed");
+
+        Self {
+            topic_id,
+            endpoint,
+            signing_key,
+            secret_rotation,
+            initial_secret_hash,
+        }
+    }
+
+    pub fn endpoint(&self) -> iroh::Endpoint {
+        self.endpoint.clone()
+    }
+
+    pub fn topic_id(&self) -> crate::TopicId {
+        self.topic_id.clone()
+    }
+
+    pub fn signing_key(&self) -> mainline::SigningKey {
+        self.signing_key.clone()
+    }
+
+    pub fn secret_rotation(&self) -> Option<crate::crypto::keys::RotationHandle> {
+        self.secret_rotation.clone()
+    }
+
+    pub fn initial_secret_hash(&self) -> [u8; 32] {
+        self.initial_secret_hash
+    }
+}
+
+impl RecordCreator {
+    pub async fn publish_record(
+        &self,
+        record: Record,
+    ) -> Result<HashSet<Record>> {
+        // Get verified records that have active_peers or last_message_hashes set (active participants)
+        let records = crate::Topic::get_unix_minute_records(
+            self.topic_id(),
+            record.unix_minute(),
+            self.secret_rotation(),
+            self.initial_secret_hash(),
+            self.endpoint().node_id(),
+        )
+        .await
+        .iter()
+        .filter(|&record| {
+            record
+                .active_peers()
+                .iter()
+                .filter(|&peer| peer.eq(&[0u8; 32]))
+                .count()
+                > 0
+                || record
+                    .last_message_hashes()
+                    .iter()
+                    .filter(|&hash| hash.eq(&[0u8; 32]))
+                    .count()
+                    > 0
+        })
+        .cloned()
+        .collect::<HashSet<_>>();
+
+        // Don't publish if there are more then MAX_BOOTSTRAP_RECORDS already written
+        // that either have active_peers or last_message_hashes set (active participants)
+        if records.len() >= crate::MAX_BOOTSTRAP_RECORDS {
+            return Ok(records);
+        }
+
+        // Publish own records
+        
+        crate::Topic::publish_unix_minute_record(
+            record.unix_minute(),
+            &self.topic_id(),
+            self.secret_rotation(),
+            self.initial_secret_hash(),
+            record,
+            Some(3),
+        )
+        .await?;
+
+        Ok(records)
+    }
+}
 
 impl EncryptedRecord {
     pub fn decrypt(&self, decryption_key: &ed25519_dalek::SigningKey) -> Result<Record> {
@@ -171,7 +279,7 @@ impl Record {
     }
 }
 
-// fields only 
+// fields only
 impl Record {
     pub fn topic(&self) -> [u8; 32] {
         self.topic
