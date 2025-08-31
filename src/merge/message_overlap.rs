@@ -6,10 +6,12 @@ use crate::{
 };
 use anyhow::Result;
 
+#[derive(Debug, Clone)]
 pub struct MessageOverlapMerge {
     _api: Handle<MessageOverlapMergeActor>,
 }
 
+#[derive(Debug)]
 struct MessageOverlapMergeActor {
     rx: tokio::sync::mpsc::Receiver<Action<MessageOverlapMergeActor>>,
 

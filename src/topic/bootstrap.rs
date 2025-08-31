@@ -10,11 +10,12 @@ use crate::{
     gossip::receiver::GossipReceiver,
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Bootstrap {
     api: Handle<BootstrapActor>,
 }
 
+#[derive(Debug)]
 struct BootstrapActor {
     rx: tokio::sync::mpsc::Receiver<Action<Self>>,
 

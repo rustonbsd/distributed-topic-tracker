@@ -6,10 +6,12 @@ use crate::{
 };
 use anyhow::Result;
 
+#[derive(Debug,Clone)]
 pub struct Publisher {
     _api: Handle<PublisherActor>,
 }
 
+#[derive(Debug)]
 struct PublisherActor {
     rx: tokio::sync::mpsc::Receiver<Action<PublisherActor>>,
 

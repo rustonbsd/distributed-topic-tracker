@@ -6,10 +6,12 @@ use crate::{
 };
 use anyhow::Result;
 
+#[derive(Debug,Clone)]
 pub struct BubbleMerge {
     _api: Handle<BubbleMergeActor>,
 }
 
+#[derive(Debug)]
 struct BubbleMergeActor {
     rx: tokio::sync::mpsc::Receiver<Action<BubbleMergeActor>>,
 

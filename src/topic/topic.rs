@@ -31,10 +31,12 @@ impl TopicId {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Topic {
     api: crate::actor::Handle<TopicActor>,
 }
 
+#[derive(Debug)]
 struct TopicActor {
     rx: tokio::sync::mpsc::Receiver<crate::actor::Action<Self>>,
     bootstrap: crate::topic::bootstrap::Bootstrap,
