@@ -4,11 +4,11 @@ description = "auto bootstrap for iroh-gossip topics"
 license = "MIT"
 authors = ["Zacharias Boehler <rustonbsd@mailfence.com>"]
 repository = "https://github.com/rustonbsd/distributed-topic-tracker"
-homepage = "https://rustonbsd.github.io/distributed-topic-tracker"
+homepage = "https://rustonbsd.github.io/2025/09/03/distributed-topic-tracker.html"
 readme = "README.md"
 keywords = ["networking"]
 categories = ["network-programming"]
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 
 
