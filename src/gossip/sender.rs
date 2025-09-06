@@ -41,6 +41,13 @@ impl GossipSenderActor {
             .map_err(|e| anyhow::anyhow!(e))
     }
 
+    async fn broadcast_neighbors(&mut self, data: Vec<u8>) -> Result<()> {
+        self.gossip_sender
+            .broadcast_neighbors(data.into())
+            .await
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
     async fn join_peers(&mut self, peers: Vec<iroh::NodeId>) -> Result<()> {
         self.gossip_sender
             .join_peers(peers)
@@ -76,6 +83,12 @@ impl GossipSender {
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
         self.api
             .call(move |actor| Box::pin(actor.broadcast(data)))
+            .await
+    }
+
+    pub async fn broadcast_neighbors(&self, data: Vec<u8>) -> Result<()> {
+        self.api
+            .call(move |actor| Box::pin(actor.broadcast_neighbors(data)))
             .await
     }
 
