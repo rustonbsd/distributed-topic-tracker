@@ -120,14 +120,14 @@ impl GossipReceiver {
         self.api
             .call(move |actor| Box::pin(async move { Ok(actor.neighbors()) }))
             .await
-            .expect("void")
+            .expect("actor stopped running: neighbors call failed")
     }
 
     pub async fn is_joined(&self) -> bool {
         self.api
             .call(move |actor| Box::pin(async move { Ok(actor.is_joined()) }))
             .await
-            .expect("void")
+            .expect("actor stopped running: is_joined call failed")
     }
 
     pub async fn next(&self) -> Option<Result<iroh_gossip::api::Event, iroh_gossip::api::ApiError>> {
@@ -149,6 +149,6 @@ impl GossipReceiver {
         self.api
             .call(move |actor| Box::pin(async move { Ok(actor.last_message_hashes()) }))
             .await
-            .expect("void")
+            .expect("actor stopped running: last_message_hashes call failed")
     }
 }
