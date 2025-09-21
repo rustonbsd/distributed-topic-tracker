@@ -1,24 +1,9 @@
-#[allow(unused_imports)]
-use crate::{DefaultSecretRotation, EncryptedRecord, Record, RotationHandle, TopicId, unix_minute};
-#[allow(unused_imports)]
+use std::str::FromStr;
+
+use distributed_topic_tracker::{encryption_keypair, salt, signing_keypair, unix_minute, DefaultSecretRotation, EncryptedRecord, Record, RecordTopic, RotationHandle};
 use mainline::SigningKey;
-#[allow(unused_imports)]
 use rand::rngs::OsRng;
 
-#[test]
-fn test_topic_id_creation() {
-    let topic_id = TopicId::new("test-topic".to_string());
-    assert_eq!(topic_id.raw(), "test-topic");
-    assert_eq!(topic_id.hash().len(), 32);
-
-    // Same input should produce same hash
-    let topic_id2 = TopicId::new("test-topic".to_string());
-    assert_eq!(topic_id.hash(), topic_id2.hash());
-
-    // Different input should produce different hash
-    let topic_id3 = TopicId::new("different-topic".to_string());
-    assert_ne!(topic_id.hash(), topic_id3.hash());
-}
 
 #[test]
 fn test_record_serialization_roundtrip() {
@@ -186,35 +171,37 @@ fn test_unix_minute_function() {
 
 #[test]
 fn test_topic_signing_keypair_deterministic() {
-    let topic_id = TopicId::new("test-topic".to_string());
+    let topic_id = RecordTopic::from_str("test-topic").unwrap();
+    let record_topic = topic_id.into();
     let unix_minute = 12345u64;
 
-    let key1 = crate::crypto::keys::signing_keypair(&topic_id, unix_minute);
-    let key2 = crate::crypto::keys::signing_keypair(&topic_id, unix_minute);
+    let key1 = signing_keypair(record_topic, unix_minute);
+    let key2 = signing_keypair(record_topic, unix_minute);
 
     // Same inputs should produce same keypair
     assert_eq!(key1.to_bytes(), key2.to_bytes());
 
     // Different unix_minute should produce different keypair
-    let key3 = crate::crypto::keys::signing_keypair(&topic_id, unix_minute + 1);
+    let key3 = signing_keypair(record_topic, unix_minute + 1);
     assert_ne!(key1.to_bytes(), key3.to_bytes());
 }
 
 #[test]
 fn test_topic_encryption_keypair_deterministic() {
-    let topic_id = TopicId::new("test-topic".to_string());
+    let topic_id = RecordTopic::from_str("test-topic").unwrap();
+    let record_topic = topic_id.into();
     let unix_minute = 12345u64;
     let initial_secret_hash = [1u8; 32];
     let rotation = RotationHandle::new(DefaultSecretRotation);
 
-    let key1 = crate::crypto::keys::encryption_keypair(
-        &topic_id,
+    let key1 = encryption_keypair(
+        record_topic,
         &rotation,
         initial_secret_hash,
         unix_minute,
     );
-    let key2 = crate::crypto::keys::encryption_keypair(
-        &topic_id,
+    let key2 = encryption_keypair(
+        record_topic,
         &rotation,
         initial_secret_hash,
         unix_minute,
@@ -225,22 +212,23 @@ fn test_topic_encryption_keypair_deterministic() {
 
     // Different unix_minute should produce different keypair
     let key3 =
-        crate::encryption_keypair(&topic_id, &rotation, initial_secret_hash, unix_minute + 1);
+        crate::encryption_keypair(record_topic, &rotation, initial_secret_hash, unix_minute + 1);
     assert_ne!(key1.to_bytes(), key3.to_bytes());
 }
 
 #[test]
 fn test_topic_salt_deterministic() {
-    let topic_id = TopicId::new("test-topic".to_string());
+    let topic_id = RecordTopic::from_str("test-topic").unwrap();
+    let record_topic = topic_id.into();
     let unix_minute = 12345u64;
 
-    let salt1 = crate::salt(&topic_id, unix_minute);
-    let salt2 = crate::salt(&topic_id, unix_minute);
+    let salt1 = salt(record_topic, unix_minute);
+    let salt2 = salt(record_topic, unix_minute);
 
     // Same inputs should produce same salt
     assert_eq!(salt1, salt2);
 
     // Different unix_minute should produce different salt
-    let salt3 = crate::salt(&topic_id, unix_minute + 1);
+    let salt3 = salt(record_topic, unix_minute + 1);
     assert_ne!(salt1, salt3);
 }

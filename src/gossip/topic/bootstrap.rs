@@ -2,11 +2,11 @@ use std::{collections::HashSet, time::Duration};
 
 use anyhow::Result;
 use tokio::time::sleep;
+use actor_helper::{act, act_ok, Action, Actor, Handle};
 
 use crate::{
     GossipSender,
-    actor::{Action, Actor, Handle},
-    crypto::record::Record,
+    crypto::Record,
     gossip::receiver::GossipReceiver,
 };
 
@@ -19,7 +19,7 @@ pub struct Bootstrap {
 struct BootstrapActor {
     rx: tokio::sync::mpsc::Receiver<Action<Self>>,
 
-    record_publisher: crate::crypto::record::RecordPublisher,
+    record_publisher: crate::crypto::RecordPublisher,
 
     gossip_sender: GossipSender,
     gossip_receiver: GossipReceiver,
@@ -27,12 +27,12 @@ struct BootstrapActor {
 
 impl Bootstrap {
     pub async fn new(
-        record_publisher: crate::crypto::record::RecordPublisher,
+        record_publisher: crate::crypto::RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
     ) -> Result<Self> {
         let gossip_topic: iroh_gossip::api::GossipTopic = gossip
             .subscribe(
-                iroh_gossip::proto::TopicId::from(record_publisher.topic_id().hash()),
+                iroh_gossip::proto::TopicId::from(record_publisher.record_topic().hash()),
                 vec![],
             )
             .await?;
@@ -58,18 +58,18 @@ impl Bootstrap {
     }
 
     pub async fn bootstrap(&self) -> Result<tokio::sync::oneshot::Receiver<()>> {
-        self.api.call(|actor| Box::pin(actor.bootstrap())).await        
+        self.api.call(act!(actor=> actor.start_bootstrap())).await        
     }
 
     pub async fn gossip_sender(&self) -> Result<GossipSender> {
         self.api
-            .call(move |actor| Box::pin(actor.gossip_sender()))
+            .call(act_ok!(actor => async move { actor.gossip_sender.clone() }))
             .await
     }
 
     pub async fn gossip_receiver(&self) -> Result<GossipReceiver> {
         self.api
-            .call(move |actor| Box::pin(actor.gossip_receiver()))
+            .call(act_ok!(actor => async move { actor.gossip_receiver.clone() }))
             .await
     }
 }
@@ -91,7 +91,7 @@ impl Actor for BootstrapActor {
 }
 
 impl BootstrapActor {
-    pub async fn bootstrap(&mut self) -> Result<tokio::sync::oneshot::Receiver<()>> {
+    pub async fn start_bootstrap(&mut self) -> Result<tokio::sync::oneshot::Receiver<()>> {
         let (sender, receiver) = tokio::sync::oneshot::channel();
         tokio::spawn({
             let mut last_published_unix_minute = 0;
@@ -124,9 +124,9 @@ impl BootstrapActor {
                             tokio::spawn({
                                 let record_creator = record_publisher.clone();
                                 let record = Record::sign(
-                                    record_publisher.topic_id().hash(),
+                                    record_publisher.record_topic().hash(),
                                     unix_minute,
-                                    record_publisher.node_id().public().to_bytes(),
+                                    record_publisher.pub_key().to_bytes(),
                                     [[0; 32]; 5],
                                     [[0; 32]; 5],
                                     &record_publisher.signing_key(),
@@ -205,9 +205,9 @@ impl BootstrapActor {
                             tokio::spawn({
                                 let record_creator = record_publisher.clone();
                                 let record = Record::sign(
-                                    record_publisher.topic_id().hash(),
+                                    record_publisher.record_topic().hash(),
                                     unix_minute,
-                                    record_publisher.node_id().public().to_bytes(),
+                                    record_publisher.pub_key().to_bytes(),
                                     [[0; 32]; 5],
                                     [[0; 32]; 5],
                                     &record_publisher.signing_key(),
@@ -226,13 +226,5 @@ impl BootstrapActor {
         });
 
         Ok(receiver)
-    }
-
-    pub async fn gossip_sender(&mut self) -> Result<GossipSender> {
-        Ok(self.gossip_sender.clone())
-    }
-
-    pub async fn gossip_receiver(&mut self) -> Result<GossipReceiver> {
-        Ok(self.gossip_receiver.clone())
     }
 }

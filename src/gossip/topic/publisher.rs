@@ -1,8 +1,8 @@
 use std::time::Duration;
+use actor_helper::{Action, Actor, Handle};
 
 use crate::{
     GossipReceiver, RecordPublisher,
-    actor::{Action, Actor, Handle},
 };
 use anyhow::Result;
 
@@ -67,7 +67,7 @@ impl PublisherActor {
                 .neighbors()
                 .await
                 .iter()
-                .cloned()
+                .map(|n| n.public())
                 .collect(),
             self.gossip_receiver.last_message_hashes().await,
         );

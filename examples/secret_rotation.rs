@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
 
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        endpoint.node_id(),
+        endpoint.node_id().public(),
         secret_key.secret().clone(),
         Some(RotationHandle::new(MySecretRotation)),
         initial_secret,

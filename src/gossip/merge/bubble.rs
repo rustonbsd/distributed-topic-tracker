@@ -1,12 +1,10 @@
 use std::{collections::HashSet, time::Duration};
+use actor_helper::{Action, Actor, Handle};
 
-use crate::{
-    GossipReceiver, GossipSender, RecordPublisher,
-    actor::{Action, Actor, Handle},
-};
+use crate::{GossipReceiver, GossipSender, RecordPublisher};
 use anyhow::Result;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct BubbleMerge {
     _api: Handle<BubbleMergeActor>,
 }
@@ -82,7 +80,7 @@ impl BubbleMergeActor {
                             if active_peer == [0; 32]
                                 || neighbors.contains(&active_peer)
                                 || active_peer.eq(record.node_id().to_vec().as_slice())
-                                || active_peer.eq(self.record_publisher.node_id().as_bytes())
+                                || active_peer.eq(self.record_publisher.pub_key().as_bytes())
                             {
                                 None
                             } else {
@@ -95,7 +93,7 @@ impl BubbleMergeActor {
             self.gossip_sender
                 .join_peers(
                     node_ids.iter().cloned().collect::<Vec<_>>(),
-                    Some(crate::MAX_JOIN_PEERS_COUNT),
+                    Some(super::MAX_JOIN_PEERS_COUNT),
                 )
                 .await?;
         }
