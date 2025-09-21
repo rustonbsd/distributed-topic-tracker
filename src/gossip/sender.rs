@@ -1,6 +1,5 @@
 use actor_helper::{Action, Actor, Handle, act};
 use anyhow::Result;
-use futures::TryFutureExt;
 use rand::seq::SliceRandom;
 
 #[derive(Debug, Clone)]
@@ -42,14 +41,18 @@ impl GossipSender {
 
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
         self.api
-            .call(act!(actor => actor.gossip_sender
-            .broadcast(data.into()).map_err(|e| anyhow::anyhow!(e))))
+            .call(act!(actor => async move {
+                        actor.gossip_sender
+                    .broadcast(data.into()).await.map_err(|e| anyhow::anyhow!(e))
+                }))
             .await
     }
 
     pub async fn broadcast_neighbors(&self, data: Vec<u8>) -> Result<()> {
         self.api
-            .call(act!(actor => actor.gossip_sender.broadcast_neighbors(data.into()).map_err(|e| anyhow::anyhow!(e))))
+            .call(act!(actor => async move {
+                actor.gossip_sender.broadcast_neighbors(data.into()).await.map_err(|e| anyhow::anyhow!(e))
+            }))
             .await
     }
 
@@ -65,10 +68,12 @@ impl GossipSender {
         }
 
         self.api
-            .call(act!(actor => actor.gossip_sender
+            .call(act!(actor => async move {
+                actor.gossip_sender
             .join_peers(peers)
-            .map_err(|e| anyhow::anyhow!(e))))
             .await
+            .map_err(|e| anyhow::anyhow!(e))
+        })).await
     }
 }
 

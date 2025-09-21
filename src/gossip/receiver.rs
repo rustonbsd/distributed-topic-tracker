@@ -2,7 +2,7 @@ use std::collections::{HashSet, VecDeque};
 
 use actor_helper::{Action, Actor, Handle, act, act_ok};
 use anyhow::Result;
-use futures::StreamExt;
+use futures_lite::StreamExt;
 use sha2::Digest;
 
 #[derive(Debug, Clone)]

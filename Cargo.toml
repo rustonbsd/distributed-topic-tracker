@@ -1,6 +1,6 @@
 [package]
 name = "distributed-topic-tracker"
-description = "auto bootstrap for iroh-gossip topics"
+description = "automagically find peers interested in a topic + iroh-gossip integration"
 license = "MIT"
 authors = ["Zacharias Boehler <rustonbsd@mailfence.com>"]
 repository = "https://github.com/rustonbsd/distributed-topic-tracker"
@@ -17,27 +17,23 @@ iroh-gossip = ["dep:iroh", "dep:iroh-gossip"]
 
 
 [dependencies]
-sha2 = "0.10"
-anyhow = "1"
-hmac = "0.12"
-primitive-types = "0.13"
+sha2 = { version = "0.10", default-features = false }
+anyhow = { version = "1", default-features = false, features = ["std"] }
 
-curve25519-dalek = { version = "4.1" }
-ed25519-dalek = { version = "2.2" }
+ed25519-dalek = { version = "2.2", default-features = false, features = ["rand_core"] }
 ed25519-dalek-hpke = { version = "0.0.4" }
 
-tokio = { version = "1", default-features = false, features = ["macros","time","sync"] }
+tokio = { version = "1", default-features = false, features = ["macros", "time", "sync", "rt-multi-thread"] }
 
-iroh = { version = "0.92", optional = true }
-iroh-gossip = { version = "0.92", optional = true }
+iroh = { version = "0.92", optional = true, default-features = false }
+iroh-gossip = { version = "0.92", optional = true, default-features = false, features = ["net"]}
 
-futures = "0.3.31"
+futures-lite = "2"
 
-chrono = "0.4"
-once_cell = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-mainline = "5.4"
-rand = "0.8"
+mainline = { version = "5.4", default-features = false, features = ["async"]}
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 actor-helper = "0.1.1"
 
 

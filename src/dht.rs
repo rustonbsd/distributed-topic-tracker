@@ -3,7 +3,7 @@ use std::time::Duration;
 use actor_helper::{Action, Actor, Handle, act};
 use anyhow::{Context, Result, bail};
 use ed25519_dalek::VerifyingKey;
-use futures::StreamExt;
+use futures_lite::StreamExt;
 use mainline::{MutableItem, SigningKey};
 
 const RETRY_DEFAULT: usize = 3;
