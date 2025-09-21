@@ -118,6 +118,7 @@ The e2e test verifies that multiple nodes can discover each other through the DH
 - [x] Add more examples
 - [x] Optimize configuration settings
 - [x] Major refactor
+- [x] make `iroh-gossip` integration a feature (repurposed for rustpatcher)
 - [ ] Docs (api)
 
 ## License
