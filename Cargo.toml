@@ -11,26 +11,70 @@ categories = ["network-programming"]
 version = "0.1.5"
 edition = "2024"
 
+[features]
+default = ["iroh-gossip"]
+iroh-gossip = ["dep:iroh", "dep:iroh-gossip"]
+
 
 [dependencies]
 sha2 = "0.10"
-anyhow = "1.0.99"
+anyhow = "1"
 z32 = "1.3"
 hmac = "0.12"
 primitive-types = "0.13"
 
-curve25519-dalek = { version = "4.1.3" }
-ed25519-dalek = { version = "2.2.0" }
+curve25519-dalek = { version = "4" }
+ed25519-dalek = { version = "2" }
 ed25519-dalek-hpke = { version = "0.0.4" }
 
-tokio = { version = "1.47.1", features = ["full","sync"] }
-iroh = { version = "0.91.2" }
-iroh-gossip = { version = "0.91.0" }
+tokio = { version = "1", default-features = false, features = ["macros","time","sync"] }
+
+
+iroh = { version = "0.92", optional = true }
+iroh-gossip = { version = "0.92", optional = true }
+
 futures = "0.3.31"
 
 chrono = "0.4"
-once_cell = "1.21.3"
+once_cell = "1"
 
-mainline = "5.4.0"
+mainline = "5"
 rand = "0.8"
-arc-swap = "1.7.1"
+arc-swap = "1"
+
+# disable the "iroh-gossip" feature defined above for dev builds
+[dev-dependencies]
+iroh = { version = "0.92", default-features = false }
+iroh-gossip = { version = "0.92", default-features = false }
+
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[test]]
+name = "test_gossip"
+required-features = ["iroh-gossip"]
+
+[[test]]
+name = "tests"
+
+# only build examples if the "iroh-gossip" feature is enabled
+[[example]]
+name = "chat"
+required-features = ["iroh-gossip"]
+
+[[example]]
+name = "chat_no_wait"
+required-features = ["iroh-gossip"]
+
+[[example]]
+name = "e2e_test"
+required-features = ["iroh-gossip"]
+
+[[example]]
+name = "secret_rotation"
+required-features = ["iroh-gossip"]
+
+[[example]]
+name = "simple"
+required-features = ["iroh-gossip"]

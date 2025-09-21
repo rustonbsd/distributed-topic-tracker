@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     let initial_secret = b"my-initial-secret".to_vec();
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        endpoint.node_id(),
+        endpoint.node_id().public(),
         secret_key.secret().clone(),
         None,
         initial_secret,

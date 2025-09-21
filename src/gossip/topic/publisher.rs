@@ -67,7 +67,7 @@ impl PublisherActor {
                 .neighbors()
                 .await
                 .iter()
-                .cloned()
+                .map(|n| n.public())
                 .collect(),
             self.gossip_receiver.last_message_hashes().await,
         );

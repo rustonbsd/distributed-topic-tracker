@@ -107,7 +107,7 @@ impl MessageOverlapMergeActor {
                 self.gossip_sender
                     .join_peers(
                         node_ids.iter().cloned().collect::<Vec<_>>(),
-                        Some(crate::MAX_JOIN_PEERS_COUNT),
+                        Some(super::MAX_JOIN_PEERS_COUNT),
                     )
                     .await?;
             }

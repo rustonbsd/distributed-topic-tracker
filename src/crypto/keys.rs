@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sha2::Digest;
 
-use crate::topic::topic::TopicId;
+use crate::crypto::RecordTopic;
 
 
 pub trait SecretRotation: Send + Sync {
@@ -54,9 +54,9 @@ impl RotationHandle {
     }
 }
 
-pub fn signing_keypair(topic_id: &TopicId, unix_minute: u64) -> ed25519_dalek::SigningKey {
+pub fn signing_keypair(record_topic: RecordTopic, unix_minute: u64) -> ed25519_dalek::SigningKey {
     let mut sign_keypair_hash = sha2::Sha512::new();
-    sign_keypair_hash.update(topic_id.hash());
+    sign_keypair_hash.update(record_topic.hash());
     sign_keypair_hash.update(unix_minute.to_le_bytes());
     let sign_keypair_seed: [u8; 32] = sign_keypair_hash.finalize()[..32]
         .try_into()
@@ -65,7 +65,7 @@ pub fn signing_keypair(topic_id: &TopicId, unix_minute: u64) -> ed25519_dalek::S
 }
 
 pub fn encryption_keypair(
-    topic_id: &TopicId,
+    record_topic: RecordTopic,
     secret_rotation_function: &RotationHandle,
     initial_secret_hash: [u8; 32],
     unix_minute: u64,
@@ -73,14 +73,14 @@ pub fn encryption_keypair(
     let enc_keypair_seed =
         secret_rotation_function
             .0
-            .derive(topic_id.hash(), unix_minute, initial_secret_hash);
+            .derive(record_topic.hash(), unix_minute, initial_secret_hash);
     ed25519_dalek::SigningKey::from_bytes(&enc_keypair_seed)
 }
 
 // salt = hash (topic + unix_minute)
-pub fn salt(topic_id: &TopicId, unix_minute: u64) -> [u8; 32] {
+pub fn salt(record_topic: RecordTopic, unix_minute: u64) -> [u8; 32] {
     let mut slot_hash = sha2::Sha512::new();
-    slot_hash.update(topic_id.hash());
+    slot_hash.update(record_topic.hash());
     slot_hash.update(unix_minute.to_le_bytes());
     slot_hash.finalize()[..32]
         .try_into()

@@ -1,4 +1,9 @@
-use crate::{GossipSender, actor::Actor};
+use crate::{
+    actor::Actor, crypto::RecordTopic, gossip::{
+        merge::{BubbleMerge, MessageOverlapMerge},
+        topic::{bootstrap::Bootstrap, publisher::Publisher},
+    }, GossipSender
+};
 use anyhow::Result;
 use sha2::Digest;
 
@@ -6,6 +11,12 @@ use sha2::Digest;
 pub struct TopicId {
     _raw: String,
     hash: [u8; 32], // sha512( raw )[..32]
+}
+
+impl Into<RecordTopic> for TopicId {
+    fn into(self) -> RecordTopic {
+        RecordTopic::from_bytes(&self.hash)
+    }
 }
 
 impl TopicId {
@@ -26,7 +37,7 @@ impl TopicId {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn raw(&self) -> &str {
+    pub fn raw(&self) -> &str {
         &self._raw
     }
 }
@@ -39,24 +50,22 @@ pub struct Topic {
 #[derive(Debug)]
 struct TopicActor {
     rx: tokio::sync::mpsc::Receiver<crate::actor::Action<Self>>,
-    bootstrap: crate::topic::bootstrap::Bootstrap,
-    publisher: Option<crate::topic::publisher::Publisher>,
-    bubble_merge: Option<crate::merge::bubble::BubbleMerge>,
-    message_overlap_merge: Option<crate::merge::message_overlap::MessageOverlapMerge>,
-    record_publisher: crate::crypto::record::RecordPublisher,
+    bootstrap: Bootstrap,
+    publisher: Option<Publisher>,
+    bubble_merge: Option<BubbleMerge>,
+    message_overlap_merge: Option<MessageOverlapMerge>,
+    record_publisher: crate::crypto::RecordPublisher,
 }
 
 impl Topic {
     pub async fn new(
-        record_publisher: crate::crypto::record::RecordPublisher,
+        record_publisher: crate::crypto::RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
         async_bootstrap: bool,
     ) -> Result<Self> {
         let (api, rx) = crate::actor::Handle::channel(32);
 
-        let bootstrap =
-            crate::topic::bootstrap::Bootstrap::new(record_publisher.clone(), gossip.clone())
-                .await?;
+        let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone()).await?;
 
         tokio::spawn({
             let bootstrap = bootstrap.clone();
@@ -110,7 +119,7 @@ impl Topic {
             .await
     }
 
-    pub async fn record_creator(&self) -> Result<crate::crypto::record::RecordPublisher> {
+    pub async fn record_creator(&self) -> Result<crate::crypto::RecordPublisher> {
         self.api
             .call(move |actor| Box::pin(async move { Ok(actor.record_publisher.clone()) }))
             .await
@@ -143,16 +152,14 @@ impl TopicActor {
     }
 
     pub async fn start_publishing(&mut self) -> Result<()> {
-        let publisher = crate::topic::publisher::Publisher::new(
-            self.record_publisher.clone(),
-            self.gossip_receiver().await?,
-        )?;
+        let publisher =
+            Publisher::new(self.record_publisher.clone(), self.gossip_receiver().await?)?;
         self.publisher = Some(publisher);
         Ok(())
     }
 
     pub async fn start_bubble_merge(&mut self) -> Result<()> {
-        let bubble_merge = crate::merge::bubble::BubbleMerge::new(
+        let bubble_merge = BubbleMerge::new(
             self.record_publisher.clone(),
             self.gossip_sender().await?,
             self.gossip_receiver().await?,
@@ -162,7 +169,7 @@ impl TopicActor {
     }
 
     pub async fn start_message_overlap_merge(&mut self) -> Result<()> {
-        let message_overlap_merge = crate::merge::message_overlap::MessageOverlapMerge::new(
+        let message_overlap_merge = MessageOverlapMerge::new(
             self.record_publisher.clone(),
             self.gossip_sender().await?,
             self.gossip_receiver().await?,

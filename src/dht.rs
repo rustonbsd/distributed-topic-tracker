@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::actor::{Action, Actor, Handle};
 use anyhow::{Context, Result, bail};
 use futures::StreamExt;
-use iroh::PublicKey;
+use ed25519_dalek::VerifyingKey;
 use mainline::{MutableItem, SigningKey};
 
 const RETRY_DEFAULT: usize = 3;
@@ -33,20 +33,20 @@ impl Dht {
 
     pub async fn get(
         &self,
-        node_id: PublicKey,
+        pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         more_recent_then: Option<i64>,
         timeout: Duration,
     ) -> Result<Vec<MutableItem>> {
         self.api
-            .call(move |actor| Box::pin(actor.get(node_id, salt, more_recent_then, timeout)))
+            .call(move |actor| Box::pin(actor.get(pub_key, salt, more_recent_then, timeout)))
             .await
     }
 
     pub async fn put_mutable(
         &self,
         signing_key: SigningKey,
-        node_id: PublicKey,
+        pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         data: Vec<u8>,
         retry_count: Option<usize>,
@@ -54,7 +54,7 @@ impl Dht {
     ) -> Result<()> {
         self.api
             .call(move |actor| {
-                Box::pin(actor.put_mutable(signing_key, node_id, salt, data, retry_count, timeout))
+                Box::pin(actor.put_mutable(signing_key, pub_key, salt, data, retry_count, timeout))
             })
             .await
     }
@@ -79,7 +79,7 @@ impl Actor for DhtActor {
 impl DhtActor {
     pub async fn get(
         &mut self,
-        node_id: PublicKey,
+        pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         more_recent_then: Option<i64>,
         timeout: Duration,
@@ -91,7 +91,7 @@ impl DhtActor {
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         Ok(tokio::time::timeout(
             timeout,
-            dht.get_mutable(node_id.as_bytes(), salt.as_deref(), more_recent_then)
+            dht.get_mutable(pub_key.as_bytes(), salt.as_deref(), more_recent_then)
                 .collect::<Vec<_>>(),
         )
         .await?)
@@ -100,7 +100,7 @@ impl DhtActor {
     pub async fn put_mutable(
         &mut self,
         signing_key: SigningKey,
-        node_id: PublicKey,
+        pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         data: Vec<u8>,
         retry_count: Option<usize>,
@@ -115,7 +115,7 @@ impl DhtActor {
 
             let most_recent_result = tokio::time::timeout(
                 timeout,
-                dht.get_mutable_most_recent(node_id.as_bytes(), salt.as_deref()),
+                dht.get_mutable_most_recent(pub_key.as_bytes(), salt.as_deref()),
             )
             .await?;
 

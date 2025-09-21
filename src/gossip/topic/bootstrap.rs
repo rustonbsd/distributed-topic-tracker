@@ -6,7 +6,7 @@ use tokio::time::sleep;
 use crate::{
     GossipSender,
     actor::{Action, Actor, Handle},
-    crypto::record::Record,
+    crypto::Record,
     gossip::receiver::GossipReceiver,
 };
 
@@ -19,7 +19,7 @@ pub struct Bootstrap {
 struct BootstrapActor {
     rx: tokio::sync::mpsc::Receiver<Action<Self>>,
 
-    record_publisher: crate::crypto::record::RecordPublisher,
+    record_publisher: crate::crypto::RecordPublisher,
 
     gossip_sender: GossipSender,
     gossip_receiver: GossipReceiver,
@@ -27,12 +27,12 @@ struct BootstrapActor {
 
 impl Bootstrap {
     pub async fn new(
-        record_publisher: crate::crypto::record::RecordPublisher,
+        record_publisher: crate::crypto::RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
     ) -> Result<Self> {
         let gossip_topic: iroh_gossip::api::GossipTopic = gossip
             .subscribe(
-                iroh_gossip::proto::TopicId::from(record_publisher.topic_id().hash()),
+                iroh_gossip::proto::TopicId::from(record_publisher.record_topic().hash()),
                 vec![],
             )
             .await?;
@@ -124,9 +124,9 @@ impl BootstrapActor {
                             tokio::spawn({
                                 let record_creator = record_publisher.clone();
                                 let record = Record::sign(
-                                    record_publisher.topic_id().hash(),
+                                    record_publisher.record_topic().hash(),
                                     unix_minute,
-                                    record_publisher.node_id().public().to_bytes(),
+                                    record_publisher.pub_key().to_bytes(),
                                     [[0; 32]; 5],
                                     [[0; 32]; 5],
                                     &record_publisher.signing_key(),
@@ -205,9 +205,9 @@ impl BootstrapActor {
                             tokio::spawn({
                                 let record_creator = record_publisher.clone();
                                 let record = Record::sign(
-                                    record_publisher.topic_id().hash(),
+                                    record_publisher.record_topic().hash(),
                                     unix_minute,
-                                    record_publisher.node_id().public().to_bytes(),
+                                    record_publisher.pub_key().to_bytes(),
                                     [[0; 32]; 5],
                                     [[0; 32]; 5],
                                     &record_publisher.signing_key(),

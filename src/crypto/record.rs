@@ -1,10 +1,36 @@
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, str::FromStr, time::Duration};
 
 use anyhow::{Result, bail};
-use ed25519_dalek::ed25519::signature::SignerMut;
+use ed25519_dalek::{ed25519::signature::SignerMut, VerifyingKey, SigningKey};
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
-use iroh::NodeId;
 use sha2::Digest;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct RecordTopic([u8; 32]);
+
+impl FromStr for RecordTopic {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let mut hasher = sha2::Sha512::new();
+        hasher.update(s.as_bytes());
+        let hash: [u8; 32] = hasher.finalize()[..32]
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("hashing failed"))?;
+        Ok(RecordTopic(hash))
+
+    }
+}
+
+impl RecordTopic {
+    pub fn from_bytes(bytes: &[u8; 32]) -> Self {
+        Self(*bytes)
+    }
+
+    pub fn hash(&self) -> [u8; 32] {
+        self.0
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EncryptedRecord {
@@ -16,7 +42,7 @@ pub struct EncryptedRecord {
 pub struct Record {
     topic: [u8; 32],
     unix_minute: u64,
-    node_id: [u8; 32],
+    pub_key: [u8; 32],
     active_peers: [[u8; 32]; 5],
     last_message_hashes: [[u8; 32]; 5],
     signature: [u8; 64],
@@ -25,19 +51,19 @@ pub struct Record {
 #[derive(Debug,Clone)]
 pub struct RecordPublisher {
     dht: crate::dht::Dht,
-    
-    topic_id: crate::topic::topic::TopicId,
-    node_id: iroh::NodeId,
-    signing_key: mainline::SigningKey,
+
+    record_topic: RecordTopic,
+    pub_key: VerifyingKey,
+    signing_key: SigningKey,
     secret_rotation: Option<crate::crypto::keys::RotationHandle>,
     initial_secret_hash: [u8; 32],
 }
 
 impl RecordPublisher {
     pub fn new(
-        topic_id: crate::topic::topic::TopicId,
-        node_id: iroh::NodeId,
-        signing_key: mainline::SigningKey,
+        record_topic: impl Into<RecordTopic>,
+        node_id: VerifyingKey,
+        signing_key: SigningKey,
         secret_rotation: Option<crate::crypto::keys::RotationHandle>,
         initial_secret: Vec<u8>,
     ) -> Self {
@@ -49,8 +75,8 @@ impl RecordPublisher {
 
         Self {
             dht: crate::dht::Dht::new(),
-            topic_id,
-            node_id,
+            record_topic: record_topic.into(),
+            pub_key: node_id,
             signing_key,
             secret_rotation,
             initial_secret_hash,
@@ -60,7 +86,7 @@ impl RecordPublisher {
     pub fn new_record(
         &self,
         unix_minute: u64,
-        neighbors: Vec<NodeId>,
+        neighbors: Vec<ed25519_dalek::VerifyingKey>,
         last_message_hashes: Vec<[u8; 32]>,
     ) -> Record {
         let mut active_peers: [[u8; 32]; 5] = [[0; 32]; 5];
@@ -74,24 +100,24 @@ impl RecordPublisher {
         } 
 
         Record::sign(
-            self.topic_id.hash(),
+            self.record_topic.hash(),
             unix_minute,
-            self.node_id.public().to_bytes(),
+            self.pub_key.to_bytes(),
             active_peers,
             last_message_hashes_array,
             &self.signing_key,
         )
     }
 
-    pub fn node_id(&self) -> iroh::NodeId {
-        self.node_id.clone()
+    pub fn pub_key(&self) -> ed25519_dalek::VerifyingKey {
+        self.pub_key.clone()
     }
 
-    pub fn topic_id(&self) -> crate::topic::topic::TopicId {
-        self.topic_id.clone()
+    pub fn record_topic(&self) -> RecordTopic {
+        self.record_topic.clone()
     }
 
-    pub fn signing_key(&self) -> mainline::SigningKey {
+    pub fn signing_key(&self) -> ed25519_dalek::SigningKey {
         self.signing_key.clone()
     }
 
@@ -136,10 +162,10 @@ impl RecordPublisher {
         }
 
         // Publish own records
-        let sign_key = crate::crypto::keys::signing_keypair(&self.topic_id.clone(), record.unix_minute);
-        let salt = crate::crypto::keys::salt(&self.topic_id, record.unix_minute);
+        let sign_key = crate::crypto::keys::signing_keypair(self.record_topic, record.unix_minute);
+        let salt = crate::crypto::keys::salt(self.record_topic, record.unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            &self.topic_id.clone(),
+            self.record_topic.clone(),
             &self.secret_rotation.clone().unwrap_or_default(),
             self.initial_secret_hash,
             record.unix_minute,
@@ -160,14 +186,14 @@ impl RecordPublisher {
     }
 
     pub async fn get_records(&self, unix_minute: u64) -> HashSet<Record> {
-        let topic_sign = crate::crypto::keys::signing_keypair(&self.topic_id, unix_minute);
+        let topic_sign = crate::crypto::keys::signing_keypair(self.record_topic, unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            &self.topic_id,
+            self.record_topic.clone(),
             &self.secret_rotation.clone().unwrap_or_default(),
             self.initial_secret_hash,
             unix_minute,
         );
-        let salt = crate::crypto::keys::salt(&self.topic_id, unix_minute);
+        let salt = crate::crypto::keys::salt(self.record_topic, unix_minute);
 
         // Get records, decrypt and verify
         let records_iter = self.dht
@@ -185,8 +211,8 @@ impl RecordPublisher {
             .filter_map(
                 |record| match EncryptedRecord::from_bytes(record.value().to_vec()) {
                     Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
-                        Ok(record) => match record.verify(&self.topic_id.hash(), unix_minute) {
-                            Ok(_) => match record.node_id().eq(self.node_id.as_bytes()) {
+                        Ok(record) => match record.verify(&self.record_topic.hash(), unix_minute) {
+                            Ok(_) => match record.node_id().eq(self.pub_key.as_bytes()) {
                                 true => None,
                                 false => Some(record),
                             },
@@ -260,7 +286,7 @@ impl Record {
         Self {
             topic,
             unix_minute,
-            node_id,
+            pub_key: node_id,
             active_peers,
             last_message_hashes,
             signature: signature.to_bytes(),
@@ -296,7 +322,7 @@ impl Record {
         Ok(Self {
             topic: topic.try_into()?,
             unix_minute: u64::from_le_bytes(unix_minute.try_into()?),
-            node_id: node_id.try_into()?,
+            pub_key: node_id.try_into()?,
             active_peers,
             last_message_hashes,
             signature: signature.try_into()?,
@@ -307,7 +333,7 @@ impl Record {
         let mut buf = Vec::new();
         buf.extend_from_slice(&self.topic);
         buf.extend_from_slice(&self.unix_minute.to_le_bytes());
-        buf.extend_from_slice(&self.node_id);
+        buf.extend_from_slice(&self.pub_key);
         for active_peer in self.active_peers {
             buf.extend_from_slice(&active_peer);
         }
@@ -329,7 +355,7 @@ impl Record {
         let record_bytes = self.to_bytes();
         let signature_data = record_bytes[..record_bytes.len() - 64].to_vec();
         let signature = ed25519_dalek::Signature::from_bytes(&self.signature);
-        let node_id = ed25519_dalek::VerifyingKey::from_bytes(&self.node_id)?;
+        let node_id = ed25519_dalek::VerifyingKey::from_bytes(&self.pub_key)?;
 
         node_id.verify_strict(signature_data.as_slice(), &signature)?;
 
@@ -363,7 +389,7 @@ impl Record {
     }
 
     pub fn node_id(&self) -> [u8; 32] {
-        self.node_id
+        self.pub_key
     }
 
     pub fn active_peers(&self) -> [[u8; 32]; 5] {
