@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use distributed_topic_tracker::{encryption_keypair, salt, signing_keypair, unix_minute, DefaultSecretRotation, EncryptedRecord, Record, RecordTopic, RotationHandle};
+use distributed_topic_tracker::{encryption_keypair, salt, signing_keypair, unix_minute, DefaultSecretRotation, EncryptedRecord, GossipRecordContent, Record, RecordTopic, RotationHandle};
 use mainline::SigningKey;
 use rand::rngs::OsRng;
 
@@ -14,26 +14,32 @@ fn test_record_serialization_roundtrip() {
     let active_peers = [[3u8; 32]; 5];
     let last_message_hashes = [[4u8; 32]; 5];
 
+    let record_content = GossipRecordContent {
+        active_peers,
+        last_message_hashes,
+    };
+
     let record = Record::sign(
         topic,
         unix_minute,
         node_id,
-        active_peers,
-        last_message_hashes,
+        record_content.clone(),
         &signing_key,
-    );
+    ).expect("Failed to sign record");
 
     // Test serialization roundtrip
     let bytes = record.to_bytes();
-    let deserialized = Record::from_bytes(bytes).unwrap();
+    let deserialized = Record::from_bytes(bytes).expect("Failed to deserialize record");
+
+    let deserialized_content: GossipRecordContent = deserialized.content().expect("Failed to get content");
 
     assert_eq!(record.topic(), deserialized.topic());
     assert_eq!(record.unix_minute(), deserialized.unix_minute());
     assert_eq!(record.node_id(), deserialized.node_id());
-    assert_eq!(record.active_peers(), deserialized.active_peers());
+    assert_eq!(record_content.active_peers, deserialized_content.active_peers);
     assert_eq!(
-        record.last_message_hashes(),
-        deserialized.last_message_hashes()
+        record_content.last_message_hashes,
+        deserialized_content.last_message_hashes
     );
     assert_eq!(record.signature(), deserialized.signature());
 }
@@ -47,14 +53,18 @@ fn test_record_verification() {
     let active_peers = [[3u8; 32]; 5];
     let last_message_hashes = [[4u8; 32]; 5];
 
+    let record_content = GossipRecordContent {
+        active_peers,
+        last_message_hashes,
+    };
+
     let record = Record::sign(
         topic,
         unix_minute,
         node_id,
-        active_peers,
-        last_message_hashes,
+        record_content,
         &signing_key,
-    );
+    ).unwrap();
 
     // Valid verification should pass
     assert!(record.verify(&topic, unix_minute).is_ok());
@@ -77,26 +87,32 @@ fn test_encrypted_record_roundtrip() {
     let active_peers = [[3u8; 32]; 5];
     let last_message_hashes = [[4u8; 32]; 5];
 
+    let record_content = GossipRecordContent {
+        active_peers,
+        last_message_hashes,
+    };
+
     let record = Record::sign(
         topic,
         unix_minute,
         node_id,
-        active_peers,
-        last_message_hashes,
+        record_content.clone(),
         &signing_key,
-    );
+    ).expect("Failed to sign record");
 
     // Test encryption/decryption roundtrip
     let encrypted = record.encrypt(&encryption_key);
     let decrypted = encrypted.decrypt(&encryption_key).unwrap();
 
+    let deserialized_content: GossipRecordContent = decrypted.content().expect("Failed to get content");
+
     assert_eq!(record.topic(), decrypted.topic());
     assert_eq!(record.unix_minute(), decrypted.unix_minute());
     assert_eq!(record.node_id(), decrypted.node_id());
-    assert_eq!(record.active_peers(), decrypted.active_peers());
+    assert_eq!(record_content.active_peers, deserialized_content.active_peers);
     assert_eq!(
-        record.last_message_hashes(),
-        decrypted.last_message_hashes()
+        record_content.last_message_hashes,
+        deserialized_content.last_message_hashes
     );
     assert_eq!(record.signature(), decrypted.signature());
 }
@@ -111,23 +127,27 @@ fn test_encrypted_record_serialization() {
     let active_peers = [[3u8; 32]; 5];
     let last_message_hashes = [[4u8; 32]; 5];
 
+    let record_content = GossipRecordContent {
+        active_peers,
+        last_message_hashes,
+    };
+
     let record = Record::sign(
         topic,
         unix_minute,
         node_id,
-        active_peers,
-        last_message_hashes,
+        record_content,
         &signing_key,
-    );
+    ).expect("Failed to sign record");
 
     let encrypted = record.encrypt(&encryption_key);
 
     // Test serialization roundtrip
     let bytes = encrypted.to_bytes();
-    let deserialized = EncryptedRecord::from_bytes(bytes).unwrap();
+    let deserialized = EncryptedRecord::from_bytes(bytes).expect("Failed to deserialize encrypted record");
 
     // Should be able to decrypt the deserialized version
-    let decrypted = deserialized.decrypt(&encryption_key).unwrap();
+    let decrypted = deserialized.decrypt(&encryption_key).expect("Failed to decrypt record");
     assert_eq!(record.topic(), decrypted.topic());
     assert_eq!(record.unix_minute(), decrypted.unix_minute());
 }
@@ -232,3 +252,4 @@ fn test_topic_salt_deterministic() {
     let salt3 = salt(record_topic, unix_minute + 1);
     assert_ne!(salt1, salt3);
 }
+

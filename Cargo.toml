@@ -35,7 +35,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 mainline = { version = "5.4", default-features = false, features = ["async"]}
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 actor-helper = "0.1.1"
-
+postcard = "1"
+serde = { version = "1", default-features = false, features = ["std"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

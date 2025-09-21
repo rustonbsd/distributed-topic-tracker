@@ -1,13 +1,13 @@
 use std::{collections::HashSet, time::Duration};
 
+use actor_helper::{Action, Actor, Handle, act, act_ok};
 use anyhow::Result;
 use tokio::time::sleep;
-use actor_helper::{act, act_ok, Action, Actor, Handle};
 
 use crate::{
     GossipSender,
     crypto::Record,
-    gossip::receiver::GossipReceiver,
+    gossip::{GossipRecordContent, receiver::GossipReceiver},
 };
 
 #[derive(Debug, Clone)]
@@ -58,7 +58,7 @@ impl Bootstrap {
     }
 
     pub async fn bootstrap(&self) -> Result<tokio::sync::oneshot::Receiver<()>> {
-        self.api.call(act!(actor=> actor.start_bootstrap())).await        
+        self.api.call(act!(actor=> actor.start_bootstrap())).await
     }
 
     pub async fn gossip_sender(&self) -> Result<GossipSender> {
@@ -96,10 +96,9 @@ impl BootstrapActor {
         tokio::spawn({
             let mut last_published_unix_minute = 0;
             let (gossip_sender, gossip_receiver) =
-                    (self.gossip_sender.clone(), self.gossip_receiver.clone());
+                (self.gossip_sender.clone(), self.gossip_receiver.clone());
             let record_publisher = self.record_publisher.clone();
             async move {
-                
                 loop {
                     // Check if we are connected to at least one node
                     if gossip_receiver.is_joined().await {
@@ -121,20 +120,22 @@ impl BootstrapActor {
                     if records.is_empty() {
                         if unix_minute != last_published_unix_minute {
                             last_published_unix_minute = unix_minute;
-                            tokio::spawn({
-                                let record_creator = record_publisher.clone();
-                                let record = Record::sign(
-                                    record_publisher.record_topic().hash(),
-                                    unix_minute,
-                                    record_publisher.pub_key().to_bytes(),
-                                    [[0; 32]; 5],
-                                    [[0; 32]; 5],
-                                    &record_publisher.signing_key(),
-                                );
-                                async move {
+                            let record_creator = record_publisher.clone();
+                            let record_content = GossipRecordContent {
+                                active_peers: [[0; 32]; 5],
+                                last_message_hashes: [[0; 32]; 5],
+                            };
+                            if let Ok(record) = Record::sign(
+                                record_publisher.record_topic().hash(),
+                                unix_minute,
+                                record_publisher.pub_key().to_bytes(),
+                                record_content,
+                                &record_publisher.signing_key(),
+                            ) {
+                                tokio::spawn(async move {
                                     let _ = record_creator.publish_record(record).await;
-                                }
-                            });
+                                });
+                            }
                         }
                         sleep(Duration::from_millis(100)).await;
                         continue;
@@ -147,9 +148,11 @@ impl BootstrapActor {
                         .iter()
                         .flat_map(|record| {
                             let mut v = vec![record.node_id()];
-                            for peer in record.active_peers() {
-                                if peer != [0; 32] {
-                                    v.push(peer);
+                            if let Ok(record_content) = record.content::<GossipRecordContent>() {
+                                for peer in record_content.active_peers {
+                                    if peer != [0; 32] {
+                                        v.push(peer);
+                                    }
                                 }
                             }
                             v
@@ -202,20 +205,21 @@ impl BootstrapActor {
                         // If we are not connected: check if we should publish a record this minute
                         if unix_minute != last_published_unix_minute {
                             last_published_unix_minute = unix_minute;
-                            tokio::spawn({
-                                let record_creator = record_publisher.clone();
-                                let record = Record::sign(
-                                    record_publisher.record_topic().hash(),
-                                    unix_minute,
-                                    record_publisher.pub_key().to_bytes(),
-                                    [[0; 32]; 5],
-                                    [[0; 32]; 5],
-                                    &record_publisher.signing_key(),
-                                );
-                                async move {
+                            let record_creator = record_publisher.clone();
+                            if let Ok(record) = Record::sign(
+                                record_publisher.record_topic().hash(),
+                                unix_minute,
+                                record_publisher.pub_key().to_bytes(),
+                                GossipRecordContent {
+                                    active_peers: [[0; 32]; 5],
+                                    last_message_hashes: [[0; 32]; 5],
+                                },
+                                &record_publisher.signing_key(),
+                            ) {
+                                tokio::spawn(async move {
                                     let _ = record_creator.publish_record(record).await;
-                                }
-                            });
+                                });
+                            }
                         }
                         sleep(Duration::from_millis(100)).await;
                         continue;

@@ -1,7 +1,7 @@
 use std::{collections::HashSet, time::Duration};
 use actor_helper::{Action, Actor, Handle};
 
-use crate::{GossipReceiver, GossipSender, RecordPublisher};
+use crate::{gossip::GossipRecordContent, GossipReceiver, GossipSender, RecordPublisher};
 use anyhow::Result;
 
 #[derive(Debug, Clone)]
@@ -72,9 +72,9 @@ impl BubbleMergeActor {
         if neighbors.len() < 4 && !records.is_empty() {
             let node_ids = records
                 .iter()
-                .flat_map(|record| {
-                    record
-                        .active_peers()
+                .filter_map(|record| {
+                    if let Ok(content) = record.content::<GossipRecordContent>() {
+                        Some(content.active_peers
                         .iter()
                         .filter_map(|&active_peer| {
                             if active_peer == [0; 32]
@@ -87,8 +87,12 @@ impl BubbleMergeActor {
                                 iroh::NodeId::from_bytes(&active_peer).ok()
                             }
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<_>>())
+                    } else {
+                        None
+                    }
                 })
+                .flatten()
                 .collect::<HashSet<_>>();
             self.gossip_sender
                 .join_peers(
