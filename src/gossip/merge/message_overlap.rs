@@ -1,9 +1,7 @@
-use std::{collections::HashSet, time::Duration};
 use actor_helper::{Action, Actor, Handle};
+use std::{collections::HashSet, time::Duration};
 
-use crate::{
-    GossipReceiver, GossipSender, RecordPublisher,
-};
+use crate::{GossipReceiver, GossipSender, RecordPublisher, gossip::GossipRecordContent};
 use anyhow::Result;
 
 #[derive(Debug, Clone)]
@@ -75,13 +73,14 @@ impl MessageOverlapMergeActor {
             let peers_to_join = records
                 .iter()
                 .filter(|record| {
-                    !record
-                        .last_message_hashes()
-                        .iter()
-                        .all(|last_message_hash| {
+                    if let Ok(content) = record.content::<GossipRecordContent>() {
+                        content.last_message_hashes.iter().any(|last_message_hash| {
                             *last_message_hash != [0; 32]
                                 && last_message_hashes.contains(last_message_hash)
                         })
+                    } else {
+                        false
+                    }
                 })
                 .collect::<Vec<_>>();
             if !peers_to_join.is_empty() {
@@ -92,12 +91,14 @@ impl MessageOverlapMergeActor {
                         if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id()) {
                             peers.push(node_id);
                         }
-                        for active_peer in record.active_peers() {
-                            if active_peer == [0; 32] {
-                                continue;
-                            }
-                            if let Ok(node_id) = iroh::NodeId::from_bytes(&active_peer) {
-                                peers.push(node_id);
+                        if let Ok(content) = record.content::<GossipRecordContent>() {
+                            for active_peer in content.active_peers {
+                                if active_peer == [0; 32] {
+                                    continue;
+                                }
+                                if let Ok(node_id) = iroh::NodeId::from_bytes(&active_peer) {
+                                    peers.push(node_id);
+                                }
                             }
                         }
                         peers

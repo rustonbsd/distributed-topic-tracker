@@ -1,8 +1,9 @@
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
 use anyhow::{Result, bail};
-use ed25519_dalek::{ed25519::signature::SignerMut, VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey, ed25519::signature::SignerMut};
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -18,7 +19,6 @@ impl FromStr for RecordTopic {
             .try_into()
             .map_err(|_| anyhow::anyhow!("hashing failed"))?;
         Ok(RecordTopic(hash))
-
     }
 }
 
@@ -43,12 +43,25 @@ pub struct Record {
     topic: [u8; 32],
     unix_minute: u64,
     pub_key: [u8; 32],
-    active_peers: [[u8; 32]; 5],
-    last_message_hashes: [[u8; 32]; 5],
+    content: RecordContent,
     signature: [u8; 64],
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RecordContent(pub Vec<u8>);
+
+impl RecordContent {
+    pub fn to<'a, T: Deserialize<'a>>(&'a self) -> anyhow::Result<T> {
+        postcard::from_bytes::<T>(&self.0).map_err(|e| anyhow::anyhow!(e))
+    }
+    pub fn from_arbitrary<T: Serialize>(from: &T) -> anyhow::Result<Self> {
+        Ok(Self(
+            postcard::to_allocvec(from).map_err(|e| anyhow::anyhow!(e))?,
+        ))
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RecordPublisher {
     dht: crate::dht::Dht,
 
@@ -62,7 +75,7 @@ pub struct RecordPublisher {
 impl RecordPublisher {
     pub fn new(
         record_topic: impl Into<RecordTopic>,
-        node_id: VerifyingKey,
+        pub_key: VerifyingKey,
         signing_key: SigningKey,
         secret_rotation: Option<crate::crypto::keys::RotationHandle>,
         initial_secret: Vec<u8>,
@@ -76,35 +89,23 @@ impl RecordPublisher {
         Self {
             dht: crate::dht::Dht::new(),
             record_topic: record_topic.into(),
-            pub_key: node_id,
+            pub_key,
             signing_key,
             secret_rotation,
             initial_secret_hash,
         }
     }
 
-    pub fn new_record(
-        &self,
+    pub fn new_record<'a>(
+        &'a self,
         unix_minute: u64,
-        neighbors: Vec<ed25519_dalek::VerifyingKey>,
-        last_message_hashes: Vec<[u8; 32]>,
-    ) -> Record {
-        let mut active_peers: [[u8; 32]; 5] = [[0; 32]; 5];
-        for (i, peer) in neighbors.iter().take(5).enumerate() {
-            active_peers[i] = *peer.as_bytes()
-        }
-
-        let mut last_message_hashes_array = [[0u8; 32]; 5];
-        for (i, hash) in last_message_hashes.iter().take(5).enumerate() {
-            last_message_hashes_array[i] = *hash;
-        } 
-
+        record_content: impl Serialize + Deserialize<'a> + Sized,
+    ) -> Result<Record> {
         Record::sign(
             self.record_topic.hash(),
             unix_minute,
             self.pub_key.to_bytes(),
-            active_peers,
-            last_message_hashes_array,
+            RecordContent(postcard::to_allocvec(&record_content).map_err(|e| anyhow::anyhow!(e))?),
             &self.signing_key,
         )
     }
@@ -131,29 +132,15 @@ impl RecordPublisher {
 }
 
 impl RecordPublisher {
-
     // returns records it checked before publishing so we don't have to get twice
     pub async fn publish_record(&self, record: Record) -> Result<()> {
         // Get verified records that have active_peers or last_message_hashes set (active participants)
-        let records = self.get_records(record.unix_minute())
-        .await
-        .iter()
-        .filter(|&record| {
-            record
-                .active_peers()
-                .iter()
-                .filter(|&peer| peer.eq(&[0u8; 32]))
-                .count()
-                > 0
-                || record
-                    .last_message_hashes()
-                    .iter()
-                    .filter(|&hash| hash.eq(&[0u8; 32]))
-                    .count()
-                    > 0
-        })
-        .cloned()
-        .collect::<HashSet<_>>();
+        let records = self
+            .get_records(record.unix_minute())
+            .await
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
 
         // Don't publish if there are more then MAX_BOOTSTRAP_RECORDS already written
         // that either have active_peers or last_message_hashes set (active participants)
@@ -171,16 +158,17 @@ impl RecordPublisher {
             record.unix_minute,
         );
         let encrypted_record = record.encrypt(&encryption_key);
-        
-        self.dht.put_mutable(
-            sign_key.clone(),
-            sign_key.verifying_key().into(),
-            Some(salt.to_vec()),
-            encrypted_record.to_bytes().to_vec(),
-            Some(3),
-            Duration::from_secs(10),
-        )
-        .await?;
+
+        self.dht
+            .put_mutable(
+                sign_key.clone(),
+                sign_key.verifying_key().into(),
+                Some(salt.to_vec()),
+                encrypted_record.to_bytes().to_vec(),
+                Some(3),
+                Duration::from_secs(10),
+            )
+            .await?;
 
         Ok(())
     }
@@ -196,7 +184,8 @@ impl RecordPublisher {
         let salt = crate::crypto::keys::salt(self.record_topic, unix_minute);
 
         // Get records, decrypt and verify
-        let records_iter = self.dht
+        let records_iter = self
+            .dht
             .get(
                 topic_sign.verifying_key().into(),
                 Some(salt.to_vec()),
@@ -263,55 +252,35 @@ impl EncryptedRecord {
 }
 
 impl Record {
-    pub fn sign(
+    pub fn sign<'a>(
         topic: [u8; 32],
         unix_minute: u64,
         node_id: [u8; 32],
-        active_peers: [[u8; 32]; 5],
-        last_message_hashes: [[u8; 32]; 5],
+        record_content: impl Serialize + Deserialize<'a>,
         signing_key: &ed25519_dalek::SigningKey,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
+        let record_content = RecordContent::from_arbitrary(&record_content)?;
         let mut signature_data = Vec::new();
         signature_data.extend_from_slice(&topic);
         signature_data.extend_from_slice(&unix_minute.to_le_bytes());
         signature_data.extend_from_slice(&node_id);
-        for active_peer in active_peers {
-            signature_data.extend_from_slice(&active_peer);
-        }
-        for last_message_hash in last_message_hashes {
-            signature_data.extend_from_slice(&last_message_hash);
-        }
+        signature_data.extend(&record_content.clone().0);
         let mut signing_key = signing_key.clone();
         let signature = signing_key.sign(&signature_data);
-        Self {
+        Ok(Self {
             topic,
             unix_minute,
             pub_key: node_id,
-            active_peers,
-            last_message_hashes,
+            content: record_content,
             signature: signature.to_bytes(),
-        }
+        })
     }
 
     pub fn from_bytes(buf: Vec<u8>) -> Result<Self> {
         let (topic, buf) = buf.split_at(32);
         let (unix_minute, buf) = buf.split_at(8);
-        let (node_id, mut buf) = buf.split_at(32);
-
-        let mut active_peers: [[u8; 32]; 5] = [[0; 32]; 5];
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..active_peers.len() {
-            let (active_peer, _buf) = buf.split_at(32);
-            active_peers[i] = active_peer.try_into()?;
-            buf = _buf;
-        }
-        let mut last_message_hashes: [[u8; 32]; 5] = [[0; 32]; 5];
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..last_message_hashes.len() {
-            let (last_message_hash, _buf) = buf.split_at(32);
-            last_message_hashes[i] = last_message_hash.try_into()?;
-            buf = _buf;
-        }
+        let (node_id, buf) = buf.split_at(32);
+        let (record_content, buf) = buf.split_at(buf.len() - 64);
 
         let (signature, buf) = buf.split_at(64);
 
@@ -323,8 +292,7 @@ impl Record {
             topic: topic.try_into()?,
             unix_minute: u64::from_le_bytes(unix_minute.try_into()?),
             pub_key: node_id.try_into()?,
-            active_peers,
-            last_message_hashes,
+            content: RecordContent(record_content.to_vec()),
             signature: signature.try_into()?,
         })
     }
@@ -334,12 +302,7 @@ impl Record {
         buf.extend_from_slice(&self.topic);
         buf.extend_from_slice(&self.unix_minute.to_le_bytes());
         buf.extend_from_slice(&self.pub_key);
-        for active_peer in self.active_peers {
-            buf.extend_from_slice(&active_peer);
-        }
-        for last_message_hash in self.last_message_hashes {
-            buf.extend_from_slice(&last_message_hash);
-        }
+        buf.extend(&self.content.0);
         buf.extend_from_slice(&self.signature);
         buf
     }
@@ -392,12 +355,8 @@ impl Record {
         self.pub_key
     }
 
-    pub fn active_peers(&self) -> [[u8; 32]; 5] {
-        self.active_peers
-    }
-
-    pub fn last_message_hashes(&self) -> [[u8; 32]; 5] {
-        self.last_message_hashes
+    pub fn content<'a, T: Deserialize<'a>>(&'a self) -> anyhow::Result<T> {
+        self.content.to::<T>()
     }
 
     pub fn signature(&self) -> [u8; 64] {

@@ -6,7 +6,7 @@ mod gossip;
 #[cfg(feature = "iroh-gossip")]
 pub use gossip::{
     AutoDiscoveryGossip, Bootstrap, BubbleMerge, GossipReceiver, GossipSender, MessageOverlapMerge,
-    Publisher, Topic, TopicId,
+    Publisher, Topic, TopicId, GossipRecordContent
 };
 
 pub use crypto::{

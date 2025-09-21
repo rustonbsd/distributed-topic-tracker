@@ -1,12 +1,10 @@
-use std::time::Duration;
 use actor_helper::{Action, Actor, Handle};
+use std::time::Duration;
 
-use crate::{
-    GossipReceiver, RecordPublisher,
-};
+use crate::{GossipReceiver, RecordPublisher};
 use anyhow::Result;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Publisher {
     _api: Handle<PublisherActor>,
 }
@@ -61,16 +59,31 @@ impl Actor for PublisherActor {
 impl PublisherActor {
     async fn publish(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let record = self.record_publisher.new_record(
-            unix_minute,
-            self.gossip_receiver
-                .neighbors()
-                .await
-                .iter()
-                .map(|n| n.public())
-                .collect(),
-            self.gossip_receiver.last_message_hashes().await,
-        );
+
+        let active_peers = self
+            .gossip_receiver
+            .neighbors()
+            .await
+            .iter()
+            .filter_map(|pub_key| TryInto::<[u8; 32]>::try_into(pub_key.as_slice()).ok())
+            .collect::<Vec<_>>();
+
+        let last_message_hashes = self
+            .gossip_receiver
+            .last_message_hashes()
+            .await
+            .iter()
+            .filter_map(|hash| TryInto::<[u8; 32]>::try_into(hash.as_slice()).ok())
+            .collect::<Vec<_>>();
+
+        let record_content = crate::gossip::GossipRecordContent {
+            active_peers: active_peers.as_slice().try_into()?,
+            last_message_hashes: last_message_hashes.as_slice().try_into()?,
+        };
+
+        let record = self
+            .record_publisher
+            .new_record(unix_minute, record_content)?;
         self.record_publisher.publish_record(record).await
     }
 }
