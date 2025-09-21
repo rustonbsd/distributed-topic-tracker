@@ -29,7 +29,6 @@ ed25519-dalek-hpke = { version = "0.0.4" }
 
 tokio = { version = "1", default-features = false, features = ["macros","time","sync"] }
 
-
 iroh = { version = "0.92", optional = true }
 iroh-gossip = { version = "0.92", optional = true }
 
@@ -42,7 +41,8 @@ mainline = "5"
 rand = "0.8"
 arc-swap = "1"
 
-# disable the "iroh-gossip" feature defined above for dev builds
+actor-helper = "0.1.1"
+
 [dev-dependencies]
 iroh = { version = "0.92", default-features = false }
 iroh-gossip = { version = "0.92", default-features = false }

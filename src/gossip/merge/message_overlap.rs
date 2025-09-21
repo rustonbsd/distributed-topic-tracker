@@ -1,8 +1,8 @@
 use std::{collections::HashSet, time::Duration};
+use actor_helper::{Action, Actor, Handle};
 
 use crate::{
     GossipReceiver, GossipSender, RecordPublisher,
-    actor::{Action, Actor, Handle},
 };
 use anyhow::Result;
 

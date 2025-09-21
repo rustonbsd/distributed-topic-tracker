@@ -1,12 +1,10 @@
 use std::{collections::HashSet, time::Duration};
+use actor_helper::{Action, Actor, Handle};
 
-use crate::{
-    GossipReceiver, GossipSender, RecordPublisher,
-    actor::{Action, Actor, Handle},
-};
+use crate::{GossipReceiver, GossipSender, RecordPublisher};
 use anyhow::Result;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct BubbleMerge {
     _api: Handle<BubbleMergeActor>,
 }

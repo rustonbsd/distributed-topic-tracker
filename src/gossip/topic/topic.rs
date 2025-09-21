@@ -1,9 +1,10 @@
 use crate::{
-    actor::Actor, crypto::RecordTopic, gossip::{
+    crypto::RecordTopic, gossip::{
         merge::{BubbleMerge, MessageOverlapMerge},
         topic::{bootstrap::Bootstrap, publisher::Publisher},
     }, GossipSender
 };
+use actor_helper::{act, act_ok, Action, Actor, Handle};
 use anyhow::Result;
 use sha2::Digest;
 
@@ -44,12 +45,12 @@ impl TopicId {
 
 #[derive(Debug, Clone)]
 pub struct Topic {
-    api: crate::actor::Handle<TopicActor>,
+    api: Handle<TopicActor>,
 }
 
 #[derive(Debug)]
 struct TopicActor {
-    rx: tokio::sync::mpsc::Receiver<crate::actor::Action<Self>>,
+    rx: tokio::sync::mpsc::Receiver<Action<Self>>,
     bootstrap: Bootstrap,
     publisher: Option<Publisher>,
     bubble_merge: Option<BubbleMerge>,
@@ -63,7 +64,7 @@ impl Topic {
         gossip: iroh_gossip::net::Gossip,
         async_bootstrap: bool,
     ) -> Result<Self> {
-        let (api, rx) = crate::actor::Handle::channel(32);
+        let (api, rx) = Handle::channel(32);
 
         let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone()).await?;
 
@@ -86,18 +87,18 @@ impl Topic {
         if !async_bootstrap {
             bootstrap_done.await?;
         }
-
+        
         // Spawn publisher after bootstrap
         let _ = api
-            .call(move |actor| Box::pin(actor.start_publishing()))
+            .call(act!(actor => actor.start_publishing()))
             .await;
 
         let _ = api
-            .call(move |actor| Box::pin(actor.start_bubble_merge()))
+            .call(act!(actor => actor.start_bubble_merge()))
             .await;
 
         let _ = api
-            .call(move |actor| Box::pin(actor.start_message_overlap_merge()))
+            .call(act!(actor => actor.start_message_overlap_merge()))
             .await;
 
         Ok(Self { api })
@@ -109,19 +110,19 @@ impl Topic {
 
     pub async fn gossip_sender(&self) -> Result<GossipSender> {
         self.api
-            .call(move |actor| Box::pin(actor.gossip_sender()))
+            .call(act!(actor => actor.bootstrap.gossip_sender()))
             .await
     }
 
     pub async fn gossip_receiver(&self) -> Result<crate::gossip::receiver::GossipReceiver> {
         self.api
-            .call(move |actor| Box::pin(actor.gossip_receiver()))
+            .call(act!(actor => actor.bootstrap.gossip_receiver()))
             .await
     }
 
     pub async fn record_creator(&self) -> Result<crate::crypto::RecordPublisher> {
         self.api
-            .call(move |actor| Box::pin(async move { Ok(actor.record_publisher.clone()) }))
+            .call(act_ok!(actor => async move { actor.record_publisher.clone() }))
             .await
     }
 }
@@ -143,17 +144,10 @@ impl Actor for TopicActor {
 }
 
 impl TopicActor {
-    pub async fn gossip_receiver(&mut self) -> Result<crate::gossip::receiver::GossipReceiver> {
-        self.bootstrap.gossip_receiver().await
-    }
-
-    pub async fn gossip_sender(&mut self) -> Result<GossipSender> {
-        self.bootstrap.gossip_sender().await
-    }
 
     pub async fn start_publishing(&mut self) -> Result<()> {
         let publisher =
-            Publisher::new(self.record_publisher.clone(), self.gossip_receiver().await?)?;
+            Publisher::new(self.record_publisher.clone(), self.bootstrap.gossip_receiver().await?)?;
         self.publisher = Some(publisher);
         Ok(())
     }
@@ -161,8 +155,8 @@ impl TopicActor {
     pub async fn start_bubble_merge(&mut self) -> Result<()> {
         let bubble_merge = BubbleMerge::new(
             self.record_publisher.clone(),
-            self.gossip_sender().await?,
-            self.gossip_receiver().await?,
+            self.bootstrap.gossip_sender().await?,
+            self.bootstrap.gossip_receiver().await?,
         )?;
         self.bubble_merge = Some(bubble_merge);
         Ok(())
@@ -171,8 +165,8 @@ impl TopicActor {
     pub async fn start_message_overlap_merge(&mut self) -> Result<()> {
         let message_overlap_merge = MessageOverlapMerge::new(
             self.record_publisher.clone(),
-            self.gossip_sender().await?,
-            self.gossip_receiver().await?,
+            self.bootstrap.gossip_sender().await?,
+            self.bootstrap.gossip_receiver().await?,
         )?;
         self.message_overlap_merge = Some(message_overlap_merge);
         Ok(())

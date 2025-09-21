@@ -1,4 +1,3 @@
-mod actor;
 mod crypto;
 mod dht;
 
@@ -10,10 +9,9 @@ pub use gossip::{
     Publisher, Topic, TopicId,
 };
 
-
 pub use crypto::{
-    DefaultSecretRotation, EncryptedRecord, Record, RecordPublisher, RotationHandle,
-    SecretRotation, encryption_keypair, salt, signing_keypair, RecordTopic,
+    DefaultSecretRotation, EncryptedRecord, Record, RecordPublisher, RecordTopic, RotationHandle,
+    SecretRotation, encryption_keypair, salt, signing_keypair,
 };
 pub use dht::Dht;
 pub const MAX_BOOTSTRAP_RECORDS: usize = 10;

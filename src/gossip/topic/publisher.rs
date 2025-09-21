@@ -1,8 +1,8 @@
 use std::time::Duration;
+use actor_helper::{Action, Actor, Handle};
 
 use crate::{
     GossipReceiver, RecordPublisher,
-    actor::{Action, Actor, Handle},
 };
 use anyhow::Result;
 

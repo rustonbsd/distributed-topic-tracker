@@ -1,14 +1,14 @@
 use std::time::Duration;
 
-use crate::actor::{Action, Actor, Handle};
+use actor_helper::{Action, Actor, Handle, act};
 use anyhow::{Context, Result, bail};
-use futures::StreamExt;
 use ed25519_dalek::VerifyingKey;
+use futures::StreamExt;
 use mainline::{MutableItem, SigningKey};
 
 const RETRY_DEFAULT: usize = 3;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Dht {
     api: Handle<DhtActor>,
 }
@@ -39,7 +39,7 @@ impl Dht {
         timeout: Duration,
     ) -> Result<Vec<MutableItem>> {
         self.api
-            .call(move |actor| Box::pin(actor.get(pub_key, salt, more_recent_then, timeout)))
+            .call(act!(actor => actor.get(pub_key, salt, more_recent_then, timeout)))
             .await
     }
 
@@ -52,11 +52,7 @@ impl Dht {
         retry_count: Option<usize>,
         timeout: Duration,
     ) -> Result<()> {
-        self.api
-            .call(move |actor| {
-                Box::pin(actor.put_mutable(signing_key, pub_key, salt, data, retry_count, timeout))
-            })
-            .await
+        self.api.call(act!(actor => actor.put_mutable(signing_key, pub_key, salt, data, retry_count, timeout))).await
     }
 }
 

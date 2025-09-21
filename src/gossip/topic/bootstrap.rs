@@ -2,10 +2,10 @@ use std::{collections::HashSet, time::Duration};
 
 use anyhow::Result;
 use tokio::time::sleep;
+use actor_helper::{act, act_ok, Action, Actor, Handle};
 
 use crate::{
     GossipSender,
-    actor::{Action, Actor, Handle},
     crypto::Record,
     gossip::receiver::GossipReceiver,
 };
@@ -58,18 +58,18 @@ impl Bootstrap {
     }
 
     pub async fn bootstrap(&self) -> Result<tokio::sync::oneshot::Receiver<()>> {
-        self.api.call(|actor| Box::pin(actor.bootstrap())).await        
+        self.api.call(act!(actor=> actor.start_bootstrap())).await        
     }
 
     pub async fn gossip_sender(&self) -> Result<GossipSender> {
         self.api
-            .call(move |actor| Box::pin(actor.gossip_sender()))
+            .call(act_ok!(actor => async move { actor.gossip_sender.clone() }))
             .await
     }
 
     pub async fn gossip_receiver(&self) -> Result<GossipReceiver> {
         self.api
-            .call(move |actor| Box::pin(actor.gossip_receiver()))
+            .call(act_ok!(actor => async move { actor.gossip_receiver.clone() }))
             .await
     }
 }
@@ -91,7 +91,7 @@ impl Actor for BootstrapActor {
 }
 
 impl BootstrapActor {
-    pub async fn bootstrap(&mut self) -> Result<tokio::sync::oneshot::Receiver<()>> {
+    pub async fn start_bootstrap(&mut self) -> Result<tokio::sync::oneshot::Receiver<()>> {
         let (sender, receiver) = tokio::sync::oneshot::channel();
         tokio::spawn({
             let mut last_published_unix_minute = 0;
@@ -226,13 +226,5 @@ impl BootstrapActor {
         });
 
         Ok(receiver)
-    }
-
-    pub async fn gossip_sender(&mut self) -> Result<GossipSender> {
-        Ok(self.gossip_sender.clone())
-    }
-
-    pub async fn gossip_receiver(&mut self) -> Result<GossipReceiver> {
-        Ok(self.gossip_receiver.clone())
     }
 }
