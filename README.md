@@ -116,7 +116,7 @@ The E2E test confirms multiple nodes discover each other via DHT and join the sa
 - [x] Add more examples
 - [x] Optimize configuration
 - [x] Major refactor
-- [x] Make `**iroh-goss` integration a feature (repurposed for rustpatcher)
+- [x] Make `iroh-gossip` integration a feature (repurposed for rustpatcher)
 - [ ] API docs
 
 ## License
