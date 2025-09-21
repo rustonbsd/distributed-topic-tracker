@@ -47,6 +47,12 @@ impl GossipSender {
             .await
     }
 
+    pub async fn broadcast_neighbors(&self, data: Vec<u8>) -> Result<()> {
+        self.api
+            .call(move |actor| Box::pin(actor.broadcast_neighbors(data)))
+            .await
+    }
+
     pub async fn join_peers(
         &self,
         peers: Vec<iroh::NodeId>,
