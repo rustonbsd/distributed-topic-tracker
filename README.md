@@ -16,7 +16,7 @@ tokio = "1"
 iroh = "*"
 iroh-gossip = "*"
 
-distributed-topic-tracker = "0.1.6"
+distributed-topic-tracker = "0.2"
 ```
 
 Basic iroh-gossip integration:
