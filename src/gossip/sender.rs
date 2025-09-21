@@ -49,7 +49,7 @@ impl GossipSender {
 
     pub async fn broadcast_neighbors(&self, data: Vec<u8>) -> Result<()> {
         self.api
-            .call(move |actor| Box::pin(actor.broadcast_neighbors(data)))
+            .call(act!(actor => actor.gossip_sender.broadcast_neighbors(data.into()).map_err(|e| anyhow::anyhow!(e))))
             .await
     }
 

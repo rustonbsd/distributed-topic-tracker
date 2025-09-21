@@ -741,7 +741,6 @@ dependencies = [
  "rand 0.8.5",
  "sha2",
  "tokio",
- "z32",
 ]
 
 [[package]]
