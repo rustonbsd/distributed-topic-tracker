@@ -105,7 +105,7 @@ impl RecordPublisher {
             self.record_topic.hash(),
             unix_minute,
             self.pub_key.to_bytes(),
-            RecordContent(postcard::to_allocvec(&record_content).map_err(|e| anyhow::anyhow!(e))?),
+            RecordContent::from_arbitrary(&record_content)?,
             &self.signing_key,
         )
     }
