@@ -105,7 +105,7 @@ impl RecordPublisher {
             self.record_topic.hash(),
             unix_minute,
             self.pub_key.to_bytes(),
-            RecordContent::from_arbitrary(&record_content)?,
+            record_content,
             &self.signing_key,
         )
     }
