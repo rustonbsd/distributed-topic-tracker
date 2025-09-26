@@ -8,7 +8,7 @@ homepage = "https://rustonbsd.github.io/2025/09/03/distributed-topic-tracker.htm
 readme = "README.md"
 keywords = ["networking"]
 categories = ["network-programming"]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 
 [features]
