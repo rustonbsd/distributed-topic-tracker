@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use actor_helper::{Action, Actor, Handle, act};
+use actor_helper::{Action, Actor, Handle, Receiver, act};
 use anyhow::{Context, Result, bail};
 use ed25519_dalek::VerifyingKey;
 use futures_lite::StreamExt;
@@ -10,18 +10,18 @@ const RETRY_DEFAULT: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct Dht {
-    api: Handle<DhtActor>,
+    api: Handle<DhtActor, anyhow::Error>,
 }
 
 #[derive(Debug)]
 struct DhtActor {
-    rx: tokio::sync::mpsc::Receiver<Action<Self>>,
+    rx: Receiver<Action<Self>>,
     dht: Option<mainline::async_dht::AsyncDht>,
 }
 
 impl Dht {
     pub fn new() -> Self {
-        let (api, rx) = Handle::channel(32);
+        let (api, rx) = Handle::channel();
 
         tokio::spawn(async move {
             let mut actor = DhtActor { rx, dht: None };
@@ -56,11 +56,11 @@ impl Dht {
     }
 }
 
-impl Actor for DhtActor {
+impl Actor<anyhow::Error> for DhtActor {
     async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                Some(action) = self.rx.recv() => {
+                Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 _ = tokio::signal::ctrl_c() => {
@@ -68,7 +68,7 @@ impl Actor for DhtActor {
                 }
             }
         }
-        Ok(())
+        Err(anyhow::anyhow!("actor stopped"))
     }
 }
 

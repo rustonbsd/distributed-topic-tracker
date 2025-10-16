@@ -5,9 +5,8 @@ use sha2::Digest;
 
 // Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{
-    AutoDiscoveryGossip, RecordPublisher, RotationHandle, SecretRotation, TopicId
+    AutoDiscoveryGossip, RecordPublisher, RotationHandle, SecretRotation, TopicId,
 };
-
 
 struct MySecretRotation;
 impl SecretRotation for MySecretRotation {
@@ -39,8 +38,7 @@ async fn main() -> Result<()> {
         .await?;
 
     // Initialize gossip with auto-discovery
-    let gossip = Gossip::builder()
-        .spawn(endpoint.clone());
+    let gossip = Gossip::builder().spawn(endpoint.clone());
 
     // Set up protocol router
     let _router = iroh::protocol::Router::builder(endpoint.clone())
@@ -62,7 +60,8 @@ async fn main() -> Result<()> {
     let (gossip_sender, gossip_receiver) = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?
-        .split().await?;
+        .split()
+        .await?;
 
     println!("Joined topic");
 
@@ -87,7 +86,8 @@ async fn main() -> Result<()> {
     loop {
         print!("\n> ");
         stdin.read_line(&mut buffer).unwrap();
-        gossip_sender.broadcast(buffer.clone().replace("\n", "").into())
+        gossip_sender
+            .broadcast(buffer.clone().replace("\n", "").into())
             .await
             .unwrap();
         println!(" - (sent)");

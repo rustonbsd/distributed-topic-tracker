@@ -1,6 +1,5 @@
 use distributed_topic_tracker::TopicId;
 
-
 #[test]
 fn test_topic_id_creation() {
     let topic_id = TopicId::new("test-topic".to_string());

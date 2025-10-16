@@ -1,17 +1,17 @@
+use actor_helper::{Action, Actor, Handle, Receiver};
 use std::{collections::HashSet, time::Duration};
-use actor_helper::{Action, Actor, Handle};
 
-use crate::{gossip::GossipRecordContent, GossipReceiver, GossipSender, RecordPublisher};
+use crate::{GossipReceiver, GossipSender, RecordPublisher, gossip::GossipRecordContent};
 use anyhow::Result;
 
 #[derive(Debug, Clone)]
 pub struct BubbleMerge {
-    _api: Handle<BubbleMergeActor>,
+    _api: Handle<BubbleMergeActor, anyhow::Error>,
 }
 
 #[derive(Debug)]
 struct BubbleMergeActor {
-    rx: tokio::sync::mpsc::Receiver<Action<BubbleMergeActor>>,
+    rx: Receiver<Action<BubbleMergeActor>>,
 
     record_publisher: RecordPublisher,
     gossip_receiver: GossipReceiver,
@@ -25,7 +25,7 @@ impl BubbleMerge {
         gossip_sender: GossipSender,
         gossip_receiver: GossipReceiver,
     ) -> Result<Self> {
-        let (api, rx) = Handle::channel(32);
+        let (api, rx) = Handle::channel();
 
         let mut ticker = tokio::time::interval(Duration::from_secs(10));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -45,11 +45,11 @@ impl BubbleMerge {
     }
 }
 
-impl Actor for BubbleMergeActor {
+impl Actor<anyhow::Error> for BubbleMergeActor {
     async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                Some(action) = self.rx.recv() => {
+                Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 _ = self.ticker.tick() => {
@@ -74,20 +74,24 @@ impl BubbleMergeActor {
                 .iter()
                 .filter_map(|record| {
                     if let Ok(content) = record.content::<GossipRecordContent>() {
-                        Some(content.active_peers
-                        .iter()
-                        .filter_map(|&active_peer| {
-                            if active_peer == [0; 32]
-                                || neighbors.contains(&active_peer)
-                                || active_peer.eq(record.node_id().to_vec().as_slice())
-                                || active_peer.eq(self.record_publisher.pub_key().as_bytes())
-                            {
-                                None
-                            } else {
-                                iroh::NodeId::from_bytes(&active_peer).ok()
-                            }
-                        })
-                        .collect::<Vec<_>>())
+                        Some(
+                            content
+                                .active_peers
+                                .iter()
+                                .filter_map(|&active_peer| {
+                                    if active_peer == [0; 32]
+                                        || neighbors.contains(&active_peer)
+                                        || active_peer.eq(record.node_id().to_vec().as_slice())
+                                        || active_peer
+                                            .eq(self.record_publisher.pub_key().as_bytes())
+                                    {
+                                        None
+                                    } else {
+                                        iroh::NodeId::from_bytes(&active_peer).ok()
+                                    }
+                                })
+                                .collect::<Vec<_>>(),
+                        )
                     } else {
                         None
                     }

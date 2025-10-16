@@ -3,9 +3,7 @@ use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
 // Imports from distrubuted-topic-tracker
-use distributed_topic_tracker::{
-    TopicId, AutoDiscoveryGossip, RecordPublisher,
-};
+use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -20,8 +18,7 @@ async fn main() -> Result<()> {
         .await?;
 
     // Initialize gossip with auto-discovery
-    let gossip = Gossip::builder()
-        .spawn(endpoint.clone());
+    let gossip = Gossip::builder().spawn(endpoint.clone());
 
     // Set up protocol router
     let _router = iroh::protocol::Router::builder(endpoint.clone())
@@ -41,7 +38,8 @@ async fn main() -> Result<()> {
     let (gossip_sender, gossip_receiver) = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?
-        .split().await?;
+        .split()
+        .await?;
 
     tokio::spawn(async move {
         while let Some(Ok(event)) = gossip_receiver.next().await {
@@ -49,9 +47,10 @@ async fn main() -> Result<()> {
         }
     });
 
-
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-    gossip_sender.broadcast(format!("hi from {}",endpoint.node_id()).into()).await?;
+    gossip_sender
+        .broadcast(format!("hi from {}", endpoint.node_id()).into())
+        .await?;
 
     println!("[joined topic]");
 

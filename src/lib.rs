@@ -5,8 +5,8 @@ mod dht;
 mod gossip;
 #[cfg(feature = "iroh-gossip")]
 pub use gossip::{
-    AutoDiscoveryGossip, Bootstrap, BubbleMerge, GossipReceiver, GossipSender, MessageOverlapMerge,
-    Publisher, Topic, TopicId, GossipRecordContent
+    AutoDiscoveryGossip, Bootstrap, BubbleMerge, GossipReceiver, GossipRecordContent, GossipSender,
+    MessageOverlapMerge, Publisher, Topic, TopicId,
 };
 
 pub use crypto::{

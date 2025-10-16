@@ -4,7 +4,6 @@ use sha2::Digest;
 
 use crate::crypto::RecordTopic;
 
-
 pub trait SecretRotation: Send + Sync {
     fn derive(
         &self,
@@ -49,7 +48,12 @@ impl RotationHandle {
         Self(Arc::new(rotation))
     }
 
-    pub fn derive(&self, topic_hash: [u8; 32], unix_minute: u64, initial_secret_hash: [u8; 32]) -> [u8; 32] {
+    pub fn derive(
+        &self,
+        topic_hash: [u8; 32],
+        unix_minute: u64,
+        initial_secret_hash: [u8; 32],
+    ) -> [u8; 32] {
         self.0.derive(topic_hash, unix_minute, initial_secret_hash)
     }
 }
