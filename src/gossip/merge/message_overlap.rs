@@ -1,9 +1,14 @@
+//! Split-brain detection via message hash overlap in DHT records.
+
 use actor_helper::{Action, Actor, Handle, Receiver};
 use std::{collections::HashSet, time::Duration};
 
 use crate::{GossipReceiver, GossipSender, RecordPublisher, gossip::GossipRecordContent};
 use anyhow::Result;
 
+/// Detects network partitions by comparing message hashes across DHT records.
+///
+/// Joins peers when their published hashes match local message history.
 #[derive(Debug, Clone)]
 pub struct MessageOverlapMerge {
     _api: Handle<MessageOverlapMergeActor, anyhow::Error>,
@@ -20,6 +25,7 @@ struct MessageOverlapMergeActor {
 }
 
 impl MessageOverlapMerge {
+    /// Create a new split-brain detector.
     pub fn new(
         record_publisher: RecordPublisher,
         gossip_sender: GossipSender,
@@ -64,10 +70,11 @@ impl Actor<anyhow::Error> for MessageOverlapMergeActor {
 }
 
 impl MessageOverlapMergeActor {
-    // Message overlap indicator
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let records = self.record_publisher.get_records(unix_minute).await;
+        let mut records = self.record_publisher.get_records(unix_minute - 1).await;
+        records.extend(self.record_publisher.get_records(unix_minute).await);
+        
         if !self.gossip_receiver.last_message_hashes().await.is_empty() {
             let last_message_hashes = self.gossip_receiver.last_message_hashes().await;
             let peers_to_join = records

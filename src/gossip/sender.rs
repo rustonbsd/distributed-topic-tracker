@@ -1,7 +1,13 @@
+//! Actor-based wrapper for iroh-gossip broadcast operations.
+
 use actor_helper::{Action, Actor, Handle, Receiver, act};
 use anyhow::Result;
 use rand::seq::SliceRandom;
 
+/// Gossip sender that broadcasts messages to peers.
+///
+/// Provides methods for broadcasting to all peers or just direct neighbors,
+/// with peer joining capabilities for topology management.
 #[derive(Debug, Clone)]
 pub struct GossipSender {
     api: Handle<GossipSenderActor, anyhow::Error>,
@@ -16,6 +22,7 @@ pub struct GossipSenderActor {
 }
 
 impl GossipSender {
+    /// Create a new gossip sender from an iroh topic sender.
     pub fn new(
         gossip_sender: iroh_gossip::api::GossipSender,
         gossip: iroh_gossip::net::Gossip,
@@ -39,6 +46,7 @@ impl GossipSender {
         }
     }
 
+    /// Broadcast a message to all peers in the topic.
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
         self.api
             .call(act!(actor => async move {
@@ -48,6 +56,7 @@ impl GossipSender {
             .await
     }
 
+    /// Broadcast a message only to direct neighbors.
     pub async fn broadcast_neighbors(&self, data: Vec<u8>) -> Result<()> {
         self.api
             .call(act!(actor => async move {
@@ -56,6 +65,12 @@ impl GossipSender {
             .await
     }
 
+    /// Join specific peer nodes.
+    ///
+    /// # Arguments
+    ///
+    /// * `peers` - List of node IDs to join
+    /// * `max_peers` - Optional maximum number of peers to join (randomly selected if exceeded)
     pub async fn join_peers(
         &self,
         peers: Vec<iroh::NodeId>,

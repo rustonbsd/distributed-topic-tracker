@@ -1,3 +1,5 @@
+//! Main topic handle combining bootstrap, publishing, and merging.
+
 use crate::{
     GossipSender,
     crypto::RecordTopic,
@@ -10,10 +12,19 @@ use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
 use anyhow::Result;
 use sha2::Digest;
 
+/// Topic identifier derived from a string via SHA512 hashing.
+///
+/// Used as the stable identifier for gossip subscriptions and DHT records.
+///
+/// # Example
+///
+/// ```ignore
+/// let topic_id = TopicId::new("chat-room-1".to_string());
+/// ```
 #[derive(Debug, Clone)]
 pub struct TopicId {
     _raw: String,
-    hash: [u8; 32], // sha512( raw )[..32]
+    hash: [u8; 32],
 }
 
 impl Into<RecordTopic> for TopicId {
@@ -23,6 +34,9 @@ impl Into<RecordTopic> for TopicId {
 }
 
 impl TopicId {
+    /// Create a new topic ID from a string.
+    ///
+    /// String is hashed with SHA512; the first 32 bytes produce the identifier.
     pub fn new(raw: String) -> Self {
         let mut raw_hash = sha2::Sha512::new();
         raw_hash.update(raw.as_bytes());
@@ -35,16 +49,22 @@ impl TopicId {
         }
     }
 
+    /// Get the hash bytes.
     pub fn hash(&self) -> [u8; 32] {
         self.hash
     }
 
+    /// Get the original string.
     #[allow(dead_code)]
     pub fn raw(&self) -> &str {
         &self._raw
     }
 }
 
+/// Handle to a joined gossip topic with auto-discovery.
+///
+/// Manages bootstrap, publishing, bubble detection, and split-brain recovery.
+/// Can be split into sender and receiver for message exchange.
 #[derive(Debug, Clone)]
 pub struct Topic {
     api: Handle<TopicActor, anyhow::Error>,
@@ -61,6 +81,13 @@ struct TopicActor {
 }
 
 impl Topic {
+    /// Create and initialize a new topic with auto-discovery.
+    ///
+    /// # Arguments
+    ///
+    /// * `record_publisher` - Record publisher for DHT operations
+    /// * `gossip` - Gossip instance for topic subscription
+    /// * `async_bootstrap` - If false, awaits until bootstrap completes
     pub async fn new(
         record_publisher: crate::crypto::RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
@@ -90,11 +117,8 @@ impl Topic {
             bootstrap_done.await?;
         }
 
-        // Spawn publisher after bootstrap
         let _ = api.call(act!(actor => actor.start_publishing())).await;
-
         let _ = api.call(act!(actor => actor.start_bubble_merge())).await;
-
         let _ = api
             .call(act!(actor => actor.start_message_overlap_merge()))
             .await;
@@ -102,22 +126,26 @@ impl Topic {
         Ok(Self { api })
     }
 
+    /// Split into sender and receiver for message exchange.
     pub async fn split(&self) -> Result<(GossipSender, crate::gossip::receiver::GossipReceiver)> {
         Ok((self.gossip_sender().await?, self.gossip_receiver().await?))
     }
 
+    /// Get the gossip sender for this topic.
     pub async fn gossip_sender(&self) -> Result<GossipSender> {
         self.api
             .call(act!(actor => actor.bootstrap.gossip_sender()))
             .await
     }
 
+    /// Get the gossip receiver for this topic.
     pub async fn gossip_receiver(&self) -> Result<crate::gossip::receiver::GossipReceiver> {
         self.api
             .call(act!(actor => actor.bootstrap.gossip_receiver()))
             .await
     }
 
+    /// Get the record publisher for this topic.
     pub async fn record_creator(&self) -> Result<crate::crypto::RecordPublisher> {
         self.api
             .call(act_ok!(actor => async move { actor.record_publisher.clone() }))

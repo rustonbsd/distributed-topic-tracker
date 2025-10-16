@@ -1,3 +1,5 @@
+//! Bootstrap process for discovering and joining peers via DHT.
+
 use std::{collections::HashSet, time::Duration};
 
 use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
@@ -10,6 +12,10 @@ use crate::{
     gossip::{GossipRecordContent, receiver::GossipReceiver},
 };
 
+/// Manages the peer discovery and joining process.
+///
+/// Queries DHT for bootstrap records, extracts node IDs, and progressively
+/// joins peers until the local node is connected to the topic.
 #[derive(Debug, Clone)]
 pub struct Bootstrap {
     api: Handle<BootstrapActor, anyhow::Error>,
@@ -26,6 +32,7 @@ struct BootstrapActor {
 }
 
 impl Bootstrap {
+    /// Create a new bootstrap process for a topic.
     pub async fn new(
         record_publisher: crate::crypto::RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
@@ -57,16 +64,21 @@ impl Bootstrap {
         Ok(Self { api: api })
     }
 
+    /// Start the bootstrap process.
+    ///
+    /// Returns a receiver that signals completion when the node has joined the topic (has at least one neighbor).
     pub async fn bootstrap(&self) -> Result<tokio::sync::oneshot::Receiver<()>> {
         self.api.call(act!(actor=> actor.start_bootstrap())).await
     }
 
+    /// Get the gossip sender for this topic.
     pub async fn gossip_sender(&self) -> Result<GossipSender> {
         self.api
             .call(act_ok!(actor => async move { actor.gossip_sender.clone() }))
             .await
     }
 
+    /// Get the gossip receiver for this topic.
     pub async fn gossip_receiver(&self) -> Result<GossipReceiver> {
         self.api
             .call(act_ok!(actor => async move { actor.gossip_receiver.clone() }))
@@ -113,7 +125,8 @@ impl BootstrapActor {
                     });
 
                     // Unique, verified records for the unix minute
-                    let records = record_publisher.get_records(unix_minute).await;
+                    let mut records = record_publisher.get_records(unix_minute-1).await;
+                    records.extend(record_publisher.get_records(unix_minute).await);
 
                     // If there are no records, invoke the publish_proc (the publishing procedure)
                     // continue the loop after
@@ -163,13 +176,6 @@ impl BootstrapActor {
                     // Maybe in the meantime someone connected to us via one of our published records
                     // we don't want to disrup the gossip rotations any more then we have to
                     // so we check again before joining new peers
-                    /*
-                    println!(
-                        "checking if joined before joining peers: {}",
-                        gossip_receiver.neighbors().await.len()
-                    );
-                    println!("bootstrap_records: {}", bootstrap_nodes.len());
-                    */
                     if gossip_receiver.is_joined().await {
                         break;
                     }

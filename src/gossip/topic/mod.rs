@@ -1,3 +1,5 @@
+//! Topic management: bootstrap, publishing, and peer merging.
+
 mod bootstrap;
 mod publisher;
 mod topic;
