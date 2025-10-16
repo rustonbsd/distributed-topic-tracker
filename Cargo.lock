@@ -4,12 +4,13 @@ version = 4
 
 [[package]]
 name = "actor-helper"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "792712fc55d66f4aaf1797f507d450442115be9fca678a148e86207ea4e2302a"
+version = "0.2.0"
+source = "git+https://github.com/rustonbsd/actor-helper?rev=1726d04ec51dc209b653ecd27404c7961de17b5b#1726d04ec51dc209b653ecd27404c7961de17b5b"
 dependencies = [
  "anyhow",
- "futures",
+ "flume",
+ "futures-executor",
+ "futures-util",
  "tokio",
 ]
 
