@@ -1,3 +1,5 @@
+//! Actor-based wrapper for iroh-gossip message receiving.
+
 use std::collections::{HashSet, VecDeque};
 
 use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
@@ -5,6 +7,10 @@ use anyhow::Result;
 use futures_lite::StreamExt;
 use sha2::Digest;
 
+/// Gossip receiver that collects incoming messages and neighbor info.
+///
+/// Tracks SHA512 message hashes (first 32 bytes) for overlap detection and provides
+/// neighbor list for topology analysis.
 #[derive(Debug, Clone)]
 pub struct GossipReceiver {
     api: Handle<GossipReceiverActor, anyhow::Error>,
@@ -26,6 +32,7 @@ pub struct GossipReceiverActor {
 }
 
 impl GossipReceiver {
+    /// Create a new gossip receiver from an iroh topic receiver.
     pub fn new(
         gossip_receiver: iroh_gossip::api::GossipReceiver,
         gossip: iroh_gossip::net::Gossip,
@@ -52,6 +59,7 @@ impl GossipReceiver {
         }
     }
 
+    /// Get the set of currently connected neighbor node IDs.
     pub async fn neighbors(&self) -> HashSet<iroh::NodeId> {
         self.api
             .call(act_ok!(actor => async move {
@@ -61,6 +69,7 @@ impl GossipReceiver {
             .expect("actor stopped")
     }
 
+    /// Check if the local node has joined the topic.
     pub async fn is_joined(&self) -> bool {
         self.api
             .call(act_ok!(actor => async move { actor.gossip_receiver.is_joined() }))
@@ -68,6 +77,9 @@ impl GossipReceiver {
             .expect("actor stopped")
     }
 
+    /// Receive the next gossip event.
+    ///
+    /// Returns `None` if the receiver is closed.
     pub async fn next(
         &self,
     ) -> Option<Result<iroh_gossip::api::Event, iroh_gossip::api::ApiError>> {
@@ -79,6 +91,9 @@ impl GossipReceiver {
         rx.await.ok()?
     }
 
+    /// Get SHA512 hashes (first 32 bytes) of recently received messages.
+    ///
+    /// Used for detecting message overlap during network partition recovery.
     pub async fn last_message_hashes(&self) -> Vec<[u8; 32]> {
         self.api
             .call(act_ok!(actor => async move { actor.last_message_hashes.clone() }))

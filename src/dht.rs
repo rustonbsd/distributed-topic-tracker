@@ -1,3 +1,8 @@
+//! Mainline BitTorrent DHT client for mutable record operations.
+//!
+//! Provides async interface for DHT get/put operations with automatic
+//! retry logic and connection management.
+
 use std::time::Duration;
 
 use actor_helper::{Action, Actor, Handle, Receiver, act};
@@ -8,6 +13,10 @@ use mainline::{MutableItem, SigningKey};
 
 const RETRY_DEFAULT: usize = 3;
 
+/// DHT client wrapper with actor-based concurrency.
+///
+/// Manages connections to the mainline DHT and handles
+/// mutable record get/put operations with automatic retries.
 #[derive(Debug, Clone)]
 pub struct Dht {
     api: Handle<DhtActor, anyhow::Error>,
@@ -20,6 +29,9 @@ struct DhtActor {
 }
 
 impl Dht {
+    /// Create a new DHT client.
+    ///
+    /// Spawns a background actor for handling DHT operations.
     pub fn new() -> Self {
         let (api, rx) = Handle::channel();
 
@@ -31,18 +43,36 @@ impl Dht {
         Self { api }
     }
 
+    /// Retrieve mutable records from the DHT.
+    ///
+    /// # Arguments
+    ///
+    /// * `pub_key` - Ed25519 public key for the record
+    /// * `salt` - Optional salt for record lookup
+    /// * `more_recent_than` - Sequence number filter (get records newer than this)
+    /// * `timeout` - Maximum time to wait for results
     pub async fn get(
         &self,
         pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
-        more_recent_then: Option<i64>,
+        more_recent_than: Option<i64>,
         timeout: Duration,
     ) -> Result<Vec<MutableItem>> {
         self.api
-            .call(act!(actor => actor.get(pub_key, salt, more_recent_then, timeout)))
+            .call(act!(actor => actor.get(pub_key, salt, more_recent_than, timeout)))
             .await
     }
 
+    /// Publish a mutable record to the DHT.
+    ///
+    /// # Arguments
+    ///
+    /// * `signing_key` - Ed25519 secret key for signing
+    /// * `pub_key` - Ed25519 public key (used for routing)
+    /// * `salt` - Optional salt for record slot
+    /// * `data` - Record value to publish
+    /// * `retry_count` - Number of retry attempts (default: 3)
+    /// * `timeout` - Per-request timeout
     pub async fn put_mutable(
         &self,
         signing_key: SigningKey,
@@ -77,7 +107,7 @@ impl DhtActor {
         &mut self,
         pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
-        more_recent_then: Option<i64>,
+        more_recent_than: Option<i64>,
         timeout: Duration,
     ) -> Result<Vec<MutableItem>> {
         if self.dht.is_none() {
@@ -87,7 +117,7 @@ impl DhtActor {
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         Ok(tokio::time::timeout(
             timeout,
-            dht.get_mutable(pub_key.as_bytes(), salt.as_deref(), more_recent_then)
+            dht.get_mutable(pub_key.as_bytes(), salt.as_deref(), more_recent_than)
                 .collect::<Vec<_>>(),
         )
         .await?)

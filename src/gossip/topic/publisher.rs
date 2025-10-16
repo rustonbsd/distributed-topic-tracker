@@ -1,9 +1,16 @@
+//! Background publisher that updates DHT records with active peer info.
+
 use actor_helper::{Action, Actor, Handle, Receiver};
 use std::time::Duration;
 
 use crate::{GossipReceiver, RecordPublisher};
 use anyhow::Result;
 
+/// Periodically publishes node state to DHT for peer discovery.
+///
+/// Publishes a record after an initial 10s delay, then repeatedly with
+/// randomized 0-49s intervals, containing this node's active neighbor list
+/// and message hashes for bubble detection and merging.
 #[derive(Debug, Clone)]
 pub struct Publisher {
     _api: Handle<PublisherActor, anyhow::Error>,
@@ -19,6 +26,9 @@ struct PublisherActor {
 }
 
 impl Publisher {
+    /// Create a new background publisher.
+    ///
+    /// Spawns a background task that periodically publishes records.
     pub fn new(record_publisher: RecordPublisher, gossip_receiver: GossipReceiver) -> Result<Self> {
         let (api, rx) = Handle::channel();
 

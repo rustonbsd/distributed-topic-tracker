@@ -1,3 +1,8 @@
+//! Cryptographic primitives for DHT record signing and encryption.
+//!
+//! This module handles Ed25519 signing keys, HPKE encryption, and secret rotation
+//! for securing DHT records used in peer discovery.
+
 mod keys;
 mod record;
 

@@ -1,9 +1,17 @@
+//! Bubble detection: merge isolated peer groups in the same topic.
+//!
+//! If local peer count < 4, extract suggested peers from DHT records and join them.
+
 use actor_helper::{Action, Actor, Handle, Receiver};
 use std::{collections::HashSet, time::Duration};
 
 use crate::{GossipReceiver, GossipSender, RecordPublisher, gossip::GossipRecordContent};
 use anyhow::Result;
 
+/// Detects and merges small isolated peer groups (bubbles).
+///
+/// Triggers when local peer count < 4 and DHT records exist. Extracts `active_peers`
+/// from DHT records and joins them.
 #[derive(Debug, Clone)]
 pub struct BubbleMerge {
     _api: Handle<BubbleMergeActor, anyhow::Error>,
@@ -20,6 +28,9 @@ struct BubbleMergeActor {
 }
 
 impl BubbleMerge {
+    /// Create a new bubble merge detector.
+    ///
+    /// Spawns a background task that periodically checks cluster size.
     pub fn new(
         record_publisher: RecordPublisher,
         gossip_sender: GossipSender,
@@ -67,7 +78,9 @@ impl BubbleMergeActor {
     // Cluster size as bubble indicator
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let records = self.record_publisher.get_records(unix_minute).await;
+        let mut records = self.record_publisher.get_records(unix_minute - 1).await;
+        records.extend(self.record_publisher.get_records(unix_minute).await);
+        
         let neighbors = self.gossip_receiver.neighbors().await;
         if neighbors.len() < 4 && !records.is_empty() {
             let node_ids = records
