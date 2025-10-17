@@ -50,14 +50,18 @@ impl Publisher {
 
 impl Actor<anyhow::Error> for PublisherActor {
     async fn run(&mut self) -> Result<()> {
+        tracing::debug!("Publisher: starting publisher actor");
         loop {
             tokio::select! {
                 Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 _ = self.ticker.tick() => {
+                    tracing::debug!("Publisher: tick fired, attempting to publish");
                     let _ = self.publish().await;
-                    self.ticker.reset_after(Duration::from_secs(rand::random::<u64>() % 50));
+                    let next_interval = rand::random::<u64>() % 50;
+                    tracing::debug!("Publisher: next publish in {}s", next_interval);
+                    self.ticker.reset_after(Duration::from_secs(next_interval));
                 }
                 _ = tokio::signal::ctrl_c() => break,
             }
@@ -86,14 +90,31 @@ impl PublisherActor {
             .filter_map(|hash| TryInto::<[u8; 32]>::try_into(hash.as_slice()).ok())
             .collect::<Vec<_>>();
 
+        tracing::debug!(
+            "Publisher: publishing record for unix_minute {} with {} active_peers and {} message_hashes",
+            unix_minute, active_peers.len(), last_message_hashes.len()
+        );
+
         let record_content = crate::gossip::GossipRecordContent {
             active_peers: active_peers.as_slice().try_into()?,
             last_message_hashes: last_message_hashes.as_slice().try_into()?,
         };
 
-        let record = self
+        tracing::debug!("Publisher: created record content: {:?}", record_content);
+
+        let res = self
             .record_publisher
-            .new_record(unix_minute, record_content)?;
-        self.record_publisher.publish_record(record).await
+            .new_record(unix_minute, record_content);
+        tracing::debug!("Publisher: created new record: {:?}", res);
+        let record = res?;
+        let result = self.record_publisher.publish_record(record).await;
+        
+        if result.is_ok() {
+            tracing::debug!("Publisher: successfully published record");
+        } else {
+            tracing::debug!("Publisher: failed to publish record: {:?}", result);
+        }
+        
+        result
     }
 }

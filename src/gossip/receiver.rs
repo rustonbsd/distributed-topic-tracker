@@ -104,6 +104,7 @@ impl GossipReceiver {
 
 impl Actor<anyhow::Error> for GossipReceiverActor {
     async fn run(&mut self) -> Result<()> {
+        tracing::debug!("GossipReceiver: starting gossip receiver actor");
         loop {
             tokio::select! {
                 Ok(action) = self.rx.recv_async() => {
@@ -123,13 +124,22 @@ impl Actor<anyhow::Error> for GossipReceiverActor {
                     if let Some(Some(Ok(event))) = self.msg_queue.front() {
                         match event {
                             iroh_gossip::api::Event::Received(msg) => {
+                                tracing::debug!("GossipReceiver: received message from {:?}", msg.delivered_from);
                                 let mut hash = sha2::Sha512::new();
                                 hash.update(msg.content.clone());
                                 if let Ok(lmh) = hash.finalize()[..32].try_into() {
                                     self.last_message_hashes.push(lmh);
                                 }
                             }
-                            _ => {}
+                            iroh_gossip::api::Event::NeighborUp(node_id) => {
+                                tracing::debug!("GossipReceiver: neighbor UP: {}", node_id);
+                            }
+                            iroh_gossip::api::Event::NeighborDown(node_id) => {
+                                tracing::debug!("GossipReceiver: neighbor DOWN: {}", node_id);
+                            }
+                            iroh_gossip::api::Event::Lagged => {
+                                tracing::debug!("GossipReceiver: event stream lagged");
+                            }
                         }
                     }
                 }

@@ -197,7 +197,10 @@ impl RecordPublisher {
             .cloned()
             .collect::<HashSet<_>>();
 
+        tracing::debug!("RecordPublisher: found {} existing records for unix_minute {}", records.len(), record.unix_minute());
+
         if records.len() >= crate::MAX_BOOTSTRAP_RECORDS {
+            tracing::debug!("RecordPublisher: max records reached ({}), skipping publish", crate::MAX_BOOTSTRAP_RECORDS);
             return Ok(());
         }
 
@@ -212,6 +215,8 @@ impl RecordPublisher {
         );
         let encrypted_record = record.encrypt(&encryption_key);
 
+        tracing::debug!("RecordPublisher: publishing record to DHT for unix_minute {}", record.unix_minute());
+        
         self.dht
             .put_mutable(
                 sign_key.clone(),
@@ -223,6 +228,7 @@ impl RecordPublisher {
             )
             .await?;
 
+        tracing::debug!("RecordPublisher: successfully published to DHT");
         Ok(())
     }
 
@@ -230,6 +236,8 @@ impl RecordPublisher {
     ///
     /// Filters out records from this publisher's own node ID.
     pub async fn get_records(&self, unix_minute: u64) -> HashSet<Record> {
+        tracing::debug!("RecordPublisher: fetching records from DHT for unix_minute {}", unix_minute);
+        
         let topic_sign = crate::crypto::keys::signing_keypair(self.record_topic, unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
             self.record_topic.clone(),
@@ -250,15 +258,20 @@ impl RecordPublisher {
             )
             .await
             .unwrap_or_default();
+        
+        tracing::debug!("RecordPublisher: received {} raw records from DHT", records_iter.len());
 
-        records_iter
+        let verified_records = records_iter
             .iter()
             .filter_map(
                 |record| match EncryptedRecord::from_bytes(record.value().to_vec()) {
                     Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
                         Ok(record) => match record.verify(&self.record_topic.hash(), unix_minute) {
                             Ok(_) => match record.node_id().eq(self.pub_key.as_bytes()) {
-                                true => None,
+                                true => {
+                                    tracing::debug!("RecordPublisher: filtered out self");
+                                    None
+                                },
                                 false => Some(record),
                             },
                             Err(_) => None,
@@ -268,7 +281,10 @@ impl RecordPublisher {
                     Err(_) => None,
                 },
             )
-            .collect::<HashSet<_>>()
+            .collect::<HashSet<_>>();
+        
+        tracing::debug!("RecordPublisher: verified {} records (filtered self)", verified_records.len());
+        verified_records
     }
 }
 
