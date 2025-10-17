@@ -48,6 +48,7 @@ impl GossipSender {
 
     /// Broadcast a message to all peers in the topic.
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
+        tracing::debug!("GossipSender: broadcasting message ({} bytes)", data.len());
         self.api
             .call(act!(actor => async move {
                     actor.gossip_sender
@@ -58,6 +59,7 @@ impl GossipSender {
 
     /// Broadcast a message only to direct neighbors.
     pub async fn broadcast_neighbors(&self, data: Vec<u8>) -> Result<()> {
+        tracing::debug!("GossipSender: broadcasting to neighbors ({} bytes)", data.len());
         self.api
             .call(act!(actor => async move {
                 actor.gossip_sender.broadcast_neighbors(data.into()).await.map_err(|e| anyhow::anyhow!(e))
@@ -81,6 +83,8 @@ impl GossipSender {
             peers.shuffle(&mut rand::rng());
             peers.truncate(max_peers);
         }
+
+        tracing::debug!("GossipSender: joining {} peers", peers.len());
 
         self.api
             .call(act!(actor => async move {

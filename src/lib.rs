@@ -21,7 +21,7 @@ pub use dht::Dht;
 /// 
 /// When publishing to the DHT, records are not published if this threshold
 /// has already been reached for the current minute slot.
-pub const MAX_BOOTSTRAP_RECORDS: usize = 10;
+pub const MAX_BOOTSTRAP_RECORDS: usize = 100;
 
 /// Get the current Unix minute timestamp, optionally offset.
 /// 

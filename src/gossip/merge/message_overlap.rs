@@ -53,14 +53,18 @@ impl MessageOverlapMerge {
 
 impl Actor<anyhow::Error> for MessageOverlapMergeActor {
     async fn run(&mut self) -> Result<()> {
+        tracing::debug!("MessageOverlapMerge: starting message overlap merge actor");
         loop {
             tokio::select! {
                 Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 _ = self.ticker.tick() => {
+                    tracing::debug!("MessageOverlapMerge: tick fired, checking for split-brain");
                     let _ = self.merge().await;
-                    self.ticker.reset_after(Duration::from_secs(rand::random::<u64>() % 50));
+                    let next_interval = rand::random::<u64>() % 50;
+                    tracing::debug!("MessageOverlapMerge: next check in {}s", next_interval);
+                    self.ticker.reset_after(Duration::from_secs(next_interval));
                 }
                 _ = tokio::signal::ctrl_c() => break,
             }
@@ -75,8 +79,11 @@ impl MessageOverlapMergeActor {
         let mut records = self.record_publisher.get_records(unix_minute-1).await;
         records.extend(self.record_publisher.get_records(unix_minute).await);
         
-        if !self.gossip_receiver.last_message_hashes().await.is_empty() {
-            let last_message_hashes = self.gossip_receiver.last_message_hashes().await;
+        let local_hashes = self.gossip_receiver.last_message_hashes().await;
+        tracing::debug!("MessageOverlapMerge: checking {} records with {} local message hashes", records.len(), local_hashes.len());
+        
+        if !local_hashes.is_empty() {
+            let last_message_hashes = local_hashes;
             let peers_to_join = records
                 .iter()
                 .filter(|record| {
@@ -90,6 +97,9 @@ impl MessageOverlapMergeActor {
                     }
                 })
                 .collect::<Vec<_>>();
+            
+            tracing::debug!("MessageOverlapMerge: found {} peers with overlapping message hashes", peers_to_join.len());
+            
             if !peers_to_join.is_empty() {
                 let node_ids = peers_to_join
                     .iter()
@@ -112,13 +122,19 @@ impl MessageOverlapMergeActor {
                     })
                     .collect::<HashSet<_>>();
 
+                tracing::debug!("MessageOverlapMerge: attempting to join {} node_ids with overlapping messages", node_ids.len());
+
                 self.gossip_sender
                     .join_peers(
                         node_ids.iter().cloned().collect::<Vec<_>>(),
                         Some(super::MAX_JOIN_PEERS_COUNT),
                     )
                     .await?;
+                
+                tracing::debug!("MessageOverlapMerge: join_peers request sent for split-brain recovery");
             }
+        } else {
+            tracing::debug!("MessageOverlapMerge: no local message hashes yet, skipping overlap detection");
         }
         Ok(())
     }

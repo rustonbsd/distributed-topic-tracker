@@ -93,13 +93,17 @@ impl Topic {
         gossip: iroh_gossip::net::Gossip,
         async_bootstrap: bool,
     ) -> Result<Self> {
+        tracing::debug!("Topic: creating new topic (async_bootstrap={})", async_bootstrap);
+        
         let (api, rx) = Handle::channel();
 
         let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone()).await?;
+        tracing::debug!("Topic: bootstrap instance created");
 
         tokio::spawn({
             let bootstrap = bootstrap.clone();
             async move {
+                tracing::debug!("Topic: starting topic actor");
                 let mut actor = TopicActor {
                     rx,
                     bootstrap: bootstrap.clone(),
@@ -114,15 +118,25 @@ impl Topic {
 
         let bootstrap_done = bootstrap.bootstrap().await?;
         if !async_bootstrap {
+            tracing::debug!("Topic: waiting for bootstrap to complete");
             bootstrap_done.await?;
+            tracing::debug!("Topic: bootstrap completed");
+        } else {
+            tracing::debug!("Topic: bootstrap started asynchronously");
         }
 
+        tracing::debug!("Topic: starting publisher");
         let _ = api.call(act!(actor => actor.start_publishing())).await;
+        
+        tracing::debug!("Topic: starting bubble merge");
         let _ = api.call(act!(actor => actor.start_bubble_merge())).await;
+        
+        tracing::debug!("Topic: starting message overlap merge");
         let _ = api
             .call(act!(actor => actor.start_message_overlap_merge()))
             .await;
 
+        tracing::debug!("Topic: fully initialized");
         Ok(Self { api })
     }
 
@@ -171,31 +185,37 @@ impl Actor<anyhow::Error> for TopicActor {
 
 impl TopicActor {
     pub async fn start_publishing(&mut self) -> Result<()> {
+        tracing::debug!("TopicActor: initializing publisher");
         let publisher = Publisher::new(
             self.record_publisher.clone(),
             self.bootstrap.gossip_receiver().await?,
         )?;
         self.publisher = Some(publisher);
+        tracing::debug!("TopicActor: publisher started");
         Ok(())
     }
 
     pub async fn start_bubble_merge(&mut self) -> Result<()> {
+        tracing::debug!("TopicActor: initializing bubble merge");
         let bubble_merge = BubbleMerge::new(
             self.record_publisher.clone(),
             self.bootstrap.gossip_sender().await?,
             self.bootstrap.gossip_receiver().await?,
         )?;
         self.bubble_merge = Some(bubble_merge);
+        tracing::debug!("TopicActor: bubble merge started");
         Ok(())
     }
 
     pub async fn start_message_overlap_merge(&mut self) -> Result<()> {
+        tracing::debug!("TopicActor: initializing message overlap merge");
         let message_overlap_merge = MessageOverlapMerge::new(
             self.record_publisher.clone(),
             self.bootstrap.gossip_sender().await?,
             self.bootstrap.gossip_receiver().await?,
         )?;
         self.message_overlap_merge = Some(message_overlap_merge);
+        tracing::debug!("TopicActor: message overlap merge started");
         Ok(())
     }
 }
