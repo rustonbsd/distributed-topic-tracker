@@ -78,9 +78,9 @@ impl BubbleMergeActor {
     // Cluster size as bubble indicator
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let mut records = self.record_publisher.get_records(unix_minute - 1).await;
+        let mut records = self.record_publisher.get_records(unix_minute-1).await;
         records.extend(self.record_publisher.get_records(unix_minute).await);
-        
+
         let neighbors = self.gossip_receiver.neighbors().await;
         if neighbors.len() < 4 && !records.is_empty() {
             let node_ids = records

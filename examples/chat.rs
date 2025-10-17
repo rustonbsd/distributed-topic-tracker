@@ -7,8 +7,15 @@ use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+
+    // tracing init
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_thread_ids(true)
+        .init();
+
     // Generate a new random secret key
-    let secret_key = SecretKey::generate(rand::rngs::OsRng);
+    let secret_key = SecretKey::generate(&mut rand::rng());
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()

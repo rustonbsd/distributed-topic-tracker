@@ -1,7 +1,8 @@
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
 use anyhow::{Result, bail};
-use ed25519_dalek::{SigningKey, VerifyingKey, ed25519::signature::SignerMut};
+use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
@@ -324,7 +325,7 @@ impl Record {
         signature_data.extend_from_slice(&unix_minute.to_le_bytes());
         signature_data.extend_from_slice(&node_id);
         signature_data.extend(&record_content.clone().0);
-        let mut signing_key = signing_key.clone();
+        let signing_key = signing_key.clone();
         let signature = signing_key.sign(&signature_data);
         Ok(Self {
             topic,
@@ -389,7 +390,7 @@ impl Record {
 
     /// Encrypt record with HPKE.
     pub fn encrypt(&self, encryption_key: &ed25519_dalek::SigningKey) -> EncryptedRecord {
-        let one_time_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
+        let one_time_key = ed25519_dalek::SigningKey::generate(&mut rand::rng());
         let p_key = one_time_key.verifying_key();
         let data_enc = p_key.encrypt(&self.to_bytes()).expect("encryption failed");
         let key_enc = encryption_key
