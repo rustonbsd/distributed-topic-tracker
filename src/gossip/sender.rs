@@ -78,7 +78,7 @@ impl GossipSender {
     ) -> Result<()> {
         let mut peers = peers;
         if let Some(max_peers) = max_peers {
-            peers.shuffle(&mut rand::thread_rng());
+            peers.shuffle(&mut rand::rng());
             peers.truncate(max_peers);
         }
 

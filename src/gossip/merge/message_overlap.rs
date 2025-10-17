@@ -72,7 +72,7 @@ impl Actor<anyhow::Error> for MessageOverlapMergeActor {
 impl MessageOverlapMergeActor {
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let mut records = self.record_publisher.get_records(unix_minute - 1).await;
+        let mut records = self.record_publisher.get_records(unix_minute-1).await;
         records.extend(self.record_publisher.get_records(unix_minute).await);
         
         if !self.gossip_receiver.last_message_hashes().await.is_empty() {

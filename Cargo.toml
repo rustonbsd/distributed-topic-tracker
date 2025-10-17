@@ -20,23 +20,26 @@ iroh-gossip = ["dep:iroh", "dep:iroh-gossip"]
 sha2 = { version = "0.10", default-features = false }
 anyhow = { version = "1", default-features = false, features = ["std"] }
 
-ed25519-dalek = { version = "2.2", default-features = false, features = ["rand_core"] }
-ed25519-dalek-hpke = { version = "0.0.4" }
+ed25519-dalek = { version = "3.0.0-pre.1", default-features = false, features = ["rand_core"] }
+ed25519-dalek-hpke = { version = "0.0.5" }
 
 tokio = { version = "1", default-features = false, features = ["macros", "time", "sync", "rt-multi-thread"] }
 
-iroh = { version = "0.92", optional = true, default-features = false }
-iroh-gossip = { version = "0.92", optional = true, default-features = false, features = ["net"]}
+iroh = { version = "0.93", optional = true, default-features = false }
+iroh-gossip = { version = "0.93", optional = true, default-features = false, features = ["net"]}
 
 futures-lite = "2"
 
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-mainline = { version = "5.4", default-features = false, features = ["async"]}
-rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
+mainline = { version = "6", default-features = false, features = ["async"]}
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng"] }
 actor-helper = { git = "https://github.com/rustonbsd/actor-helper", rev="1726d04ec51dc209b653ecd27404c7961de17b5b", default-features = false, features = ["tokio", "anyhow"] }
 postcard = "1"
 serde = { version = "1", default-features = false, features = ["std"] }
+
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["std"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
