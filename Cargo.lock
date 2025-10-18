@@ -5,7 +5,8 @@ version = 4
 [[package]]
 name = "actor-helper"
 version = "0.2.0"
-source = "git+https://github.com/rustonbsd/actor-helper?rev=1726d04ec51dc209b653ecd27404c7961de17b5b#1726d04ec51dc209b653ecd27404c7961de17b5b"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9378545a9ebea2fb1aee5a06030736ccb4d64e6558e96ac056e77fc7ac13d4b2"
 dependencies = [
  "anyhow",
  "flume",
