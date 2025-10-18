@@ -780,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "distributed-topic-tracker"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "actor-helper",
  "anyhow",
