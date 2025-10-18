@@ -13,6 +13,7 @@ Add dependencies to `Cargo.toml`:
 [dependencies]
 anyhow = "1"
 tokio = "1"
+rand = "0.9"
 iroh = "*"
 iroh-gossip = "*"
 
@@ -21,7 +22,7 @@ distributed-topic-tracker = "0.2"
 
 Basic iroh-gossip integration:
 
-```rust
+```rust,no_run
 use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
@@ -32,7 +33,7 @@ use distributed_topic_tracker::{TopicId, AutoDiscoveryGossip, RecordPublisher};
 #[tokio::main]
 async fn main() -> Result<()> {
     // Generate a new random secret key
-    let secret_key = SecretKey::generate(rand::rngs::OsRng);
+    let secret_key = SecretKey::generate(&mut rand::rng());
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
