@@ -99,7 +99,7 @@ impl BubbleMergeActor {
             );
             let node_ids = records
                 .iter()
-                .filter_map(|record| {
+                .flat_map(|record| {
                     let mut node_ids = if let Ok(content) = record.content::<GossipRecordContent>()
                     {
                         content
@@ -125,9 +125,8 @@ impl BubbleMergeActor {
                             node_ids.push(node_id);
                         }
                     }
-                    Some(node_ids)
+                    node_ids
                 })
-                .flatten()
                 .collect::<HashSet<_>>();
 
             tracing::debug!(

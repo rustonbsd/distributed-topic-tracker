@@ -86,6 +86,12 @@ impl Dht {
     }
 }
 
+impl Default for Dht {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Actor<anyhow::Error> for DhtActor {
     async fn run(&mut self) -> Result<()> {
         loop {
