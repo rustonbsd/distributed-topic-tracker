@@ -34,7 +34,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 mainline = { version = "6", default-features = false, features = ["async"]}
 rand = { version = "0.9", default-features = false, features = ["std", "std_rng"] }
-actor-helper = { git = "https://github.com/rustonbsd/actor-helper", rev="1726d04ec51dc209b653ecd27404c7961de17b5b", default-features = false, features = ["tokio", "anyhow"] }
+actor-helper = { version = "0.2", features = ["tokio", "anyhow"] }
 postcard = "1"
 serde = { version = "1", default-features = false, features = ["std"] }
 
