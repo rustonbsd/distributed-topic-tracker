@@ -2,6 +2,7 @@
 
 mod bootstrap;
 mod publisher;
+#[allow(clippy::module_inception)]
 mod topic;
 
 pub use bootstrap::Bootstrap;

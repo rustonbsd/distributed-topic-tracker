@@ -61,7 +61,7 @@ impl Bootstrap {
             let _ = actor.run().await;
         });
 
-        Ok(Self { api: api })
+        Ok(Self { api })
     }
 
     /// Start the bootstrap process.

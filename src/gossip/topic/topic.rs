@@ -27,9 +27,9 @@ pub struct TopicId {
     hash: [u8; 32],
 }
 
-impl Into<RecordTopic> for TopicId {
-    fn into(self) -> RecordTopic {
-        RecordTopic::from_bytes(&self.hash)
+impl From<TopicId> for RecordTopic {
+    fn from(val: TopicId) -> Self {
+        RecordTopic::from_bytes(&val.hash)
     }
 }
 

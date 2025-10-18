@@ -147,7 +147,7 @@ impl RecordPublisher {
     pub fn new_record<'a>(
         &'a self,
         unix_minute: u64,
-        record_content: impl Serialize + Deserialize<'a> + Sized,
+        record_content: impl Serialize + Deserialize<'a>,
     ) -> Result<Record> {
         Record::sign(
             self.record_topic.hash(),
@@ -160,12 +160,12 @@ impl RecordPublisher {
 
     /// Get this publisher's Ed25519 verifying key.
     pub fn pub_key(&self) -> ed25519_dalek::VerifyingKey {
-        self.pub_key.clone()
+        self.pub_key
     }
 
     /// Get the record topic.
     pub fn record_topic(&self) -> RecordTopic {
-        self.record_topic.clone()
+        self.record_topic
     }
 
     /// Get the signing key.
@@ -208,7 +208,7 @@ impl RecordPublisher {
         let sign_key = crate::crypto::keys::signing_keypair(self.record_topic, record.unix_minute);
         let salt = crate::crypto::keys::salt(self.record_topic, record.unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            self.record_topic.clone(),
+            self.record_topic,
             &self.secret_rotation.clone().unwrap_or_default(),
             self.initial_secret_hash,
             record.unix_minute,
@@ -220,7 +220,7 @@ impl RecordPublisher {
         self.dht
             .put_mutable(
                 sign_key.clone(),
-                sign_key.verifying_key().into(),
+                sign_key.verifying_key(),
                 Some(salt.to_vec()),
                 encrypted_record.to_bytes().to_vec(),
                 Some(3),
@@ -240,7 +240,7 @@ impl RecordPublisher {
         
         let topic_sign = crate::crypto::keys::signing_keypair(self.record_topic, unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            self.record_topic.clone(),
+            self.record_topic,
             &self.secret_rotation.clone().unwrap_or_default(),
             self.initial_secret_hash,
             unix_minute,
@@ -251,7 +251,7 @@ impl RecordPublisher {
         let records_iter = self
             .dht
             .get(
-                topic_sign.verifying_key().into(),
+                topic_sign.verifying_key(),
                 Some(salt.to_vec()),
                 None,
                 Duration::from_secs(10),
