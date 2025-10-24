@@ -1,8 +1,8 @@
 use anyhow::Result;
+use ed25519_dalek::SigningKey;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::{api::Event, net::Gossip};
 use sha2::Digest;
-use ed25519_dalek::SigningKey;
 
 // Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{

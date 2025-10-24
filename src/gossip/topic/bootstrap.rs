@@ -128,16 +128,23 @@ impl BootstrapActor {
                     });
 
                     // Unique, verified records for the unix minute
-                    let mut records = record_publisher.get_records(unix_minute-1).await;
+                    let mut records = record_publisher.get_records(unix_minute - 1).await;
                     records.extend(record_publisher.get_records(unix_minute).await);
 
-                    tracing::debug!("Bootstrap: fetched {} records for unix_minute {}", records.len(), unix_minute);
+                    tracing::debug!(
+                        "Bootstrap: fetched {} records for unix_minute {}",
+                        records.len(),
+                        unix_minute
+                    );
 
                     // If there are no records, invoke the publish_proc (the publishing procedure)
                     // continue the loop after
                     if records.is_empty() {
                         if unix_minute != last_published_unix_minute {
-                            tracing::debug!("Bootstrap: no records found, publishing own record for unix_minute {}", unix_minute);
+                            tracing::debug!(
+                                "Bootstrap: no records found, publishing own record for unix_minute {}",
+                                unix_minute
+                            );
                             last_published_unix_minute = unix_minute;
                             let record_creator = record_publisher.clone();
                             let record_content = GossipRecordContent {
@@ -179,7 +186,10 @@ impl BootstrapActor {
                         .filter_map(|node_id| EndpointId::from_bytes(&node_id).ok())
                         .collect::<HashSet<_>>();
 
-                    tracing::debug!("Bootstrap: extracted {} potential bootstrap nodes", bootstrap_nodes.len());
+                    tracing::debug!(
+                        "Bootstrap: extracted {} potential bootstrap nodes",
+                        bootstrap_nodes.len()
+                    );
 
                     // Maybe in the meantime someone connected to us via one of our published records
                     // we don't want to disrup the gossip rotations any more then we have to
@@ -197,12 +207,19 @@ impl BootstrapActor {
                                 tracing::debug!("Bootstrap: attempted to join peer {}", node_id);
                                 sleep(Duration::from_millis(100)).await;
                                 if gossip_receiver.is_joined().await {
-                                    tracing::debug!("Bootstrap: successfully joined via peer {}", node_id);
+                                    tracing::debug!(
+                                        "Bootstrap: successfully joined via peer {}",
+                                        node_id
+                                    );
                                     break;
                                 }
                             }
                             Err(e) => {
-                                tracing::debug!("Bootstrap: failed to join peer {}: {:?}", node_id, e);
+                                tracing::debug!(
+                                    "Bootstrap: failed to join peer {}: {:?}",
+                                    node_id,
+                                    e
+                                );
                                 continue;
                             }
                         }
@@ -211,7 +228,9 @@ impl BootstrapActor {
                     // If we are still not connected to anyone:
                     // give it the default iroh-gossip connection timeout before the final is_joined() check
                     if !gossip_receiver.is_joined().await {
-                        tracing::debug!("Bootstrap: not joined yet, waiting 500ms before final check");
+                        tracing::debug!(
+                            "Bootstrap: not joined yet, waiting 500ms before final check"
+                        );
                         sleep(Duration::from_millis(500)).await;
                     }
 
@@ -223,7 +242,10 @@ impl BootstrapActor {
                         tracing::debug!("Bootstrap: still not joined after attempting all peers");
                         // If we are not connected: check if we should publish a record this minute
                         if unix_minute != last_published_unix_minute {
-                            tracing::debug!("Bootstrap: publishing fallback record for unix_minute {}", unix_minute);
+                            tracing::debug!(
+                                "Bootstrap: publishing fallback record for unix_minute {}",
+                                unix_minute
+                            );
                             last_published_unix_minute = unix_minute;
                             let record_creator = record_publisher.clone();
                             if let Ok(record) = Record::sign(

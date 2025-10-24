@@ -1,7 +1,7 @@
 use anyhow::Result;
+use ed25519_dalek::SigningKey;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
-use ed25519_dalek::SigningKey;
 
 // Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};

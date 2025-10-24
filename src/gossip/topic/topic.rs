@@ -93,8 +93,11 @@ impl Topic {
         gossip: iroh_gossip::net::Gossip,
         async_bootstrap: bool,
     ) -> Result<Self> {
-        tracing::debug!("Topic: creating new topic (async_bootstrap={})", async_bootstrap);
-        
+        tracing::debug!(
+            "Topic: creating new topic (async_bootstrap={})",
+            async_bootstrap
+        );
+
         let (api, rx) = Handle::channel();
 
         let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone()).await?;
@@ -127,10 +130,10 @@ impl Topic {
 
         tracing::debug!("Topic: starting publisher");
         let _ = api.call(act!(actor => actor.start_publishing())).await;
-        
+
         tracing::debug!("Topic: starting bubble merge");
         let _ = api.call(act!(actor => actor.start_bubble_merge())).await;
-        
+
         tracing::debug!("Topic: starting message overlap merge");
         let _ = api
             .call(act!(actor => actor.start_message_overlap_merge()))

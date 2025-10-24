@@ -60,7 +60,10 @@ impl GossipSender {
 
     /// Broadcast a message only to direct neighbors.
     pub async fn broadcast_neighbors(&self, data: Vec<u8>) -> Result<()> {
-        tracing::debug!("GossipSender: broadcasting to neighbors ({} bytes)", data.len());
+        tracing::debug!(
+            "GossipSender: broadcasting to neighbors ({} bytes)",
+            data.len()
+        );
         self.api
             .call(act!(actor => async move {
                 actor.gossip_sender.broadcast_neighbors(data.into()).await.map_err(|e| anyhow::anyhow!(e))
@@ -74,11 +77,7 @@ impl GossipSender {
     ///
     /// * `peers` - List of node IDs to join
     /// * `max_peers` - Optional maximum number of peers to join (randomly selected if exceeded)
-    pub async fn join_peers(
-        &self,
-        peers: Vec<EndpointId>,
-        max_peers: Option<usize>,
-    ) -> Result<()> {
+    pub async fn join_peers(&self, peers: Vec<EndpointId>, max_peers: Option<usize>) -> Result<()> {
         let mut peers = peers;
         if let Some(max_peers) = max_peers {
             peers.shuffle(&mut rand::rng());

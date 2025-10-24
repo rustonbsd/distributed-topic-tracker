@@ -18,19 +18,19 @@ pub use crypto::{
 pub use dht::Dht;
 
 /// Maximum number of bootstrap records allowed per topic per time slot (minute).
-/// 
+///
 /// When publishing to the DHT, records are not published if this threshold
 /// has already been reached for the current minute slot.
 pub const MAX_BOOTSTRAP_RECORDS: usize = 100;
 
 /// Get the current Unix minute timestamp, optionally offset.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `minute_offset` - Offset in minutes from now (can be negative)
-/// 
+///
 /// # Example
-/// 
+///
 /// ```ignore
 /// let now = unix_minute(0);
 /// let prev_minute = unix_minute(-1);

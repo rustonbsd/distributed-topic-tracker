@@ -92,7 +92,9 @@ impl PublisherActor {
 
         tracing::debug!(
             "Publisher: publishing record for unix_minute {} with {} active_peers and {} message_hashes",
-            unix_minute, active_peers.len(), last_message_hashes.len()
+            unix_minute,
+            active_peers.len(),
+            last_message_hashes.len()
         );
 
         let record_content = crate::gossip::GossipRecordContent {
@@ -108,13 +110,13 @@ impl PublisherActor {
         tracing::debug!("Publisher: created new record: {:?}", res);
         let record = res?;
         let result = self.record_publisher.publish_record(record).await;
-        
+
         if result.is_ok() {
             tracing::debug!("Publisher: successfully published record");
         } else {
             tracing::debug!("Publisher: failed to publish record: {:?}", result);
         }
-        
+
         result
     }
 }
