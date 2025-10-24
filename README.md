@@ -26,6 +26,7 @@ Basic iroh-gossip integration:
 use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
+use ed25519_dalek::SigningKey;
 
 // Imports from distributed-topic-tracker
 use distributed_topic_tracker::{TopicId, AutoDiscoveryGossip, RecordPublisher};
