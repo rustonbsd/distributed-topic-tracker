@@ -1,6 +1,7 @@
 //! Split-brain detection via message hash overlap in DHT records.
 
 use actor_helper::{Action, Actor, Handle, Receiver};
+use iroh::EndpointId;
 use std::{collections::HashSet, time::Duration};
 
 use crate::{GossipReceiver, GossipSender, RecordPublisher, gossip::GossipRecordContent};
@@ -105,7 +106,7 @@ impl MessageOverlapMergeActor {
                     .iter()
                     .flat_map(|&record| {
                         let mut peers = vec![];
-                        if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id()) {
+                        if let Ok(node_id) = EndpointId::from_bytes(&record.node_id()) {
                             peers.push(node_id);
                         }
                         if let Ok(content) = record.content::<GossipRecordContent>() {
@@ -113,7 +114,7 @@ impl MessageOverlapMergeActor {
                                 if active_peer == [0; 32] {
                                     continue;
                                 }
-                                if let Ok(node_id) = iroh::NodeId::from_bytes(&active_peer) {
+                                if let Ok(node_id) = EndpointId::from_bytes(&active_peer) {
                                     peers.push(node_id);
                                 }
                             }

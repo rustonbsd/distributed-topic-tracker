@@ -195,7 +195,7 @@ fn test_unix_minute_function() {
 #[test]
 fn test_topic_signing_keypair_deterministic() {
     let topic_id = RecordTopic::from_str("test-topic").unwrap();
-    let record_topic = topic_id.into();
+    let record_topic = topic_id;
     let unix_minute = 12345u64;
 
     let key1 = signing_keypair(record_topic, unix_minute);
@@ -212,7 +212,7 @@ fn test_topic_signing_keypair_deterministic() {
 #[test]
 fn test_topic_encryption_keypair_deterministic() {
     let topic_id = RecordTopic::from_str("test-topic").unwrap();
-    let record_topic = topic_id.into();
+    let record_topic = topic_id;
     let unix_minute = 12345u64;
     let initial_secret_hash = [1u8; 32];
     let rotation = RotationHandle::new(DefaultSecretRotation);
@@ -236,7 +236,7 @@ fn test_topic_encryption_keypair_deterministic() {
 #[test]
 fn test_topic_salt_deterministic() {
     let topic_id = RecordTopic::from_str("test-topic").unwrap();
-    let record_topic = topic_id.into();
+    let record_topic = topic_id;
     let unix_minute = 12345u64;
 
     let salt1 = salt(record_topic, unix_minute);

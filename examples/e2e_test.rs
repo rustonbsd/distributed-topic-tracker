@@ -9,11 +9,11 @@ use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 async fn main() -> Result<()> {
     // Generate a new random secret key
     let secret_key = SecretKey::generate(&mut rand::rng());
+    let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
         .secret_key(secret_key.clone())
-        .discovery_n0()
         .bind()
         .await?;
 
@@ -30,8 +30,8 @@ async fn main() -> Result<()> {
 
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        endpoint.node_id().public(),
-        secret_key.secret().clone(),
+        signing_key.verifying_key(),
+        signing_key.clone(),
         None,
         initial_secret,
     );
@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
 
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     gossip_sender
-        .broadcast(format!("hi from {}", endpoint.node_id()).into())
+        .broadcast(format!("hi from {}", endpoint.id()).into())
         .await?;
 
     println!("[joined topic]");

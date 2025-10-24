@@ -3,6 +3,7 @@
 //! If local peer count < 4, extract suggested peers from DHT records and join them.
 
 use actor_helper::{Action, Actor, Handle, Receiver};
+use iroh::EndpointId;
 use std::{collections::HashSet, time::Duration};
 
 use crate::{GossipReceiver, GossipSender, RecordPublisher, gossip::GossipRecordContent};
@@ -100,7 +101,7 @@ impl BubbleMergeActor {
             let node_ids = records
                 .iter()
                 .flat_map(|record| {
-                    let mut node_ids = if let Ok(content) = record.content::<GossipRecordContent>()
+                    let mut endpoint_ids = if let Ok(content) = record.content::<GossipRecordContent>()
                     {
                         content
                             .active_peers
@@ -113,19 +114,19 @@ impl BubbleMergeActor {
                                 {
                                     None
                                 } else {
-                                    iroh::NodeId::from_bytes(&active_peer).ok()
+                                    iroh::EndpointId::from_bytes(&active_peer).ok()
                                 }
                             })
                             .collect::<Vec<_>>()
                     } else {
                         vec![]
                     };
-                    if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id()) {
-                        if node_id != self.record_publisher.pub_key().into() {
-                            node_ids.push(node_id);
+                    if let Ok(endpoint_id) = EndpointId::from_bytes(&record.node_id()) {
+                        if endpoint_id != EndpointId::from_verifying_key(self.record_publisher.pub_key()) {
+                            endpoint_ids.push(endpoint_id);
                         }
                     }
-                    node_ids
+                    endpoint_ids
                 })
                 .collect::<HashSet<_>>();
 
