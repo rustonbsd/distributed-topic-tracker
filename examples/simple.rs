@@ -1,4 +1,5 @@
 use anyhow::Result;
+use ed25519_dalek::SigningKey;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
@@ -8,12 +9,12 @@ use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 #[tokio::main]
 async fn main() -> Result<()> {
     // Generate a new random secret key
-    let secret_key = SecretKey::generate(rand::rngs::OsRng);
+    let secret_key = SecretKey::generate(&mut rand::rng());
+    let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
         .secret_key(secret_key.clone())
-        .discovery_n0()
         .bind()
         .await?;
 
@@ -32,8 +33,8 @@ async fn main() -> Result<()> {
 
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        endpoint.node_id().public(),
-        secret_key.secret().clone(),
+        signing_key.verifying_key(),
+        signing_key,
         None,
         initial_secret,
     );

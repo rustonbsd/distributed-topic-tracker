@@ -1,6 +1,6 @@
 use std::{collections::HashSet, time::Duration};
 
-use actor_helper::{Action, Actor, Handle, act, act_ok};
+use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
 use anyhow::Result;
 use tokio::time::sleep;
 
@@ -12,12 +12,12 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct Bootstrap {
-    api: Handle<BootstrapActor>,
+    api: Handle<BootstrapActor, anyhow::Error>,
 }
 
 #[derive(Debug)]
 struct BootstrapActor {
-    rx: tokio::sync::mpsc::Receiver<Action<Self>>,
+    rx: Receiver<Action<Self>>,
 
     record_publisher: crate::crypto::RecordPublisher,
 
@@ -42,7 +42,7 @@ impl Bootstrap {
             GossipReceiver::new(gossip_receiver, gossip.clone()),
         );
 
-        let (api, rx) = Handle::channel(32);
+        let (api, rx) = Handle::channel();
 
         tokio::spawn(async move {
             let mut actor = BootstrapActor {
@@ -54,7 +54,7 @@ impl Bootstrap {
             let _ = actor.run().await;
         });
 
-        Ok(Self { api: api })
+        Ok(Self { api })
     }
 
     pub async fn bootstrap(&self) -> Result<tokio::sync::oneshot::Receiver<()>> {
@@ -74,11 +74,11 @@ impl Bootstrap {
     }
 }
 
-impl Actor for BootstrapActor {
+impl Actor<anyhow::Error> for BootstrapActor {
     async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                Some(action) = self.rx.recv() => {
+                Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 _ = tokio::signal::ctrl_c() => {
@@ -157,7 +157,7 @@ impl BootstrapActor {
                             }
                             v
                         })
-                        .filter_map(|node_id| iroh::NodeId::from_bytes(&node_id).ok())
+                        .filter_map(|node_id| iroh::EndpointId::from_bytes(&node_id).ok())
                         .collect::<HashSet<_>>();
 
                     // Maybe in the meantime someone connected to us via one of our published records

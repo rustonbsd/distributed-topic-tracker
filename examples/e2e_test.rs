@@ -3,25 +3,23 @@ use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
 // Imports from distrubuted-topic-tracker
-use distributed_topic_tracker::{
-    TopicId, AutoDiscoveryGossip, RecordPublisher,
-};
+use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
+use ed25519_dalek::SigningKey;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Generate a new random secret key
-    let secret_key = SecretKey::generate(rand::rngs::OsRng);
+    let secret_key = SecretKey::generate(&mut rand::rng());
+    let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
         .secret_key(secret_key.clone())
-        .discovery_n0()
         .bind()
         .await?;
 
     // Initialize gossip with auto-discovery
-    let gossip = Gossip::builder()
-        .spawn(endpoint.clone());
+    let gossip = Gossip::builder().spawn(endpoint.clone());
 
     // Set up protocol router
     let _router = iroh::protocol::Router::builder(endpoint.clone())
@@ -33,15 +31,16 @@ async fn main() -> Result<()> {
 
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        endpoint.node_id().public(),
-        secret_key.secret().clone(),
+        signing_key.verifying_key(),
+        signing_key,
         None,
         initial_secret,
     );
     let (gossip_sender, gossip_receiver) = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?
-        .split().await?;
+        .split()
+        .await?;
 
     tokio::spawn(async move {
         while let Some(Ok(event)) = gossip_receiver.next().await {
@@ -49,9 +48,10 @@ async fn main() -> Result<()> {
         }
     });
 
-
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-    gossip_sender.broadcast(format!("hi from {}",endpoint.node_id()).into()).await?;
+    gossip_sender
+        .broadcast(format!("hi from {}", endpoint.id()).into())
+        .await?;
 
     println!("[joined topic]");
 

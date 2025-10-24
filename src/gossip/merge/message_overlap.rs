@@ -1,4 +1,4 @@
-use actor_helper::{Action, Actor, Handle};
+use actor_helper::{Action, Actor, Handle, Receiver};
 use std::{collections::HashSet, time::Duration};
 
 use crate::{GossipReceiver, GossipSender, RecordPublisher, gossip::GossipRecordContent};
@@ -6,12 +6,12 @@ use anyhow::Result;
 
 #[derive(Debug, Clone)]
 pub struct MessageOverlapMerge {
-    _api: Handle<MessageOverlapMergeActor>,
+    _api: Handle<MessageOverlapMergeActor, anyhow::Error>,
 }
 
 #[derive(Debug)]
 struct MessageOverlapMergeActor {
-    rx: tokio::sync::mpsc::Receiver<Action<MessageOverlapMergeActor>>,
+    rx: Receiver<Action<MessageOverlapMergeActor>>,
 
     record_publisher: RecordPublisher,
     gossip_receiver: GossipReceiver,
@@ -25,7 +25,7 @@ impl MessageOverlapMerge {
         gossip_sender: GossipSender,
         gossip_receiver: GossipReceiver,
     ) -> Result<Self> {
-        let (api, rx) = Handle::channel(32);
+        let (api, rx) = Handle::channel();
 
         let mut ticker = tokio::time::interval(Duration::from_secs(10));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -45,11 +45,11 @@ impl MessageOverlapMerge {
     }
 }
 
-impl Actor for MessageOverlapMergeActor {
+impl Actor<anyhow::Error> for MessageOverlapMergeActor {
     async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                Some(action) = self.rx.recv() => {
+                Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 _ = self.ticker.tick() => {
@@ -84,20 +84,21 @@ impl MessageOverlapMergeActor {
                 })
                 .collect::<Vec<_>>();
             if !peers_to_join.is_empty() {
-                let node_ids = peers_to_join
+                let endpoint_ids = peers_to_join
                     .iter()
                     .flat_map(|&record| {
                         let mut peers = vec![];
-                        if let Ok(node_id) = iroh::NodeId::from_bytes(&record.node_id()) {
-                            peers.push(node_id);
+                        if let Ok(endpoint_id) = iroh::EndpointId::from_bytes(&record.node_id()) {
+                            peers.push(endpoint_id);
                         }
                         if let Ok(content) = record.content::<GossipRecordContent>() {
                             for active_peer in content.active_peers {
                                 if active_peer == [0; 32] {
                                     continue;
                                 }
-                                if let Ok(node_id) = iroh::NodeId::from_bytes(&active_peer) {
-                                    peers.push(node_id);
+                                if let Ok(endpoint_id) = iroh::EndpointId::from_bytes(&active_peer)
+                                {
+                                    peers.push(endpoint_id);
                                 }
                             }
                         }
@@ -107,7 +108,7 @@ impl MessageOverlapMergeActor {
 
                 self.gossip_sender
                     .join_peers(
-                        node_ids.iter().cloned().collect::<Vec<_>>(),
+                        endpoint_ids.iter().cloned().collect::<Vec<_>>(),
                         Some(super::MAX_JOIN_PEERS_COUNT),
                     )
                     .await?;

@@ -1,7 +1,7 @@
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
 use anyhow::{Result, bail};
-use ed25519_dalek::{SigningKey, VerifyingKey, ed25519::signature::SignerMut};
+use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
@@ -99,7 +99,7 @@ impl RecordPublisher {
     pub fn new_record<'a>(
         &'a self,
         unix_minute: u64,
-        record_content: impl Serialize + Deserialize<'a> + Sized,
+        record_content: impl Serialize + Deserialize<'a>,
     ) -> Result<Record> {
         Record::sign(
             self.record_topic.hash(),
@@ -111,11 +111,11 @@ impl RecordPublisher {
     }
 
     pub fn pub_key(&self) -> ed25519_dalek::VerifyingKey {
-        self.pub_key.clone()
+        self.pub_key
     }
 
     pub fn record_topic(&self) -> RecordTopic {
-        self.record_topic.clone()
+        self.record_topic
     }
 
     pub fn signing_key(&self) -> ed25519_dalek::SigningKey {
@@ -152,7 +152,7 @@ impl RecordPublisher {
         let sign_key = crate::crypto::keys::signing_keypair(self.record_topic, record.unix_minute);
         let salt = crate::crypto::keys::salt(self.record_topic, record.unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            self.record_topic.clone(),
+            self.record_topic,
             &self.secret_rotation.clone().unwrap_or_default(),
             self.initial_secret_hash,
             record.unix_minute,
@@ -162,7 +162,7 @@ impl RecordPublisher {
         self.dht
             .put_mutable(
                 sign_key.clone(),
-                sign_key.verifying_key().into(),
+                sign_key.verifying_key(),
                 Some(salt.to_vec()),
                 encrypted_record.to_bytes().to_vec(),
                 Some(3),
@@ -176,7 +176,7 @@ impl RecordPublisher {
     pub async fn get_records(&self, unix_minute: u64) -> HashSet<Record> {
         let topic_sign = crate::crypto::keys::signing_keypair(self.record_topic, unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            self.record_topic.clone(),
+            self.record_topic,
             &self.secret_rotation.clone().unwrap_or_default(),
             self.initial_secret_hash,
             unix_minute,
@@ -187,7 +187,7 @@ impl RecordPublisher {
         let records_iter = self
             .dht
             .get(
-                topic_sign.verifying_key().into(),
+                topic_sign.verifying_key(),
                 Some(salt.to_vec()),
                 None,
                 Duration::from_secs(10),
@@ -265,7 +265,7 @@ impl Record {
         signature_data.extend_from_slice(&unix_minute.to_le_bytes());
         signature_data.extend_from_slice(&node_id);
         signature_data.extend(&record_content.clone().0);
-        let mut signing_key = signing_key.clone();
+        let signing_key = signing_key.clone();
         let signature = signing_key.sign(&signature_data);
         Ok(Self {
             topic,
@@ -326,7 +326,7 @@ impl Record {
     }
 
     pub fn encrypt(&self, encryption_key: &ed25519_dalek::SigningKey) -> EncryptedRecord {
-        let one_time_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
+        let one_time_key = ed25519_dalek::SigningKey::generate(&mut rand::rng());
         let p_key = one_time_key.verifying_key();
         let data_enc = p_key.encrypt(&self.to_bytes()).expect("encryption failed");
         let key_enc = encryption_key

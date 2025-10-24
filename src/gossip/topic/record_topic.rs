@@ -1,10 +1,12 @@
 use crate::{
-    crypto::RecordTopic, gossip::{
+    GossipSender,
+    crypto::RecordTopic,
+    gossip::{
         merge::{BubbleMerge, MessageOverlapMerge},
         topic::{bootstrap::Bootstrap, publisher::Publisher},
-    }, GossipSender
+    },
 };
-use actor_helper::{act, act_ok, Action, Actor, Handle};
+use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
 use anyhow::Result;
 use sha2::Digest;
 
@@ -14,9 +16,9 @@ pub struct TopicId {
     hash: [u8; 32], // sha512( raw )[..32]
 }
 
-impl Into<RecordTopic> for TopicId {
-    fn into(self) -> RecordTopic {
-        RecordTopic::from_bytes(&self.hash)
+impl From<TopicId> for RecordTopic {
+    fn from(val: TopicId) -> Self {
+        RecordTopic::from_bytes(&val.hash)
     }
 }
 
@@ -45,12 +47,12 @@ impl TopicId {
 
 #[derive(Debug, Clone)]
 pub struct Topic {
-    api: Handle<TopicActor>,
+    api: Handle<TopicActor, anyhow::Error>,
 }
 
 #[derive(Debug)]
 struct TopicActor {
-    rx: tokio::sync::mpsc::Receiver<Action<Self>>,
+    rx: Receiver<Action<Self>>,
     bootstrap: Bootstrap,
     publisher: Option<Publisher>,
     bubble_merge: Option<BubbleMerge>,
@@ -64,7 +66,7 @@ impl Topic {
         gossip: iroh_gossip::net::Gossip,
         async_bootstrap: bool,
     ) -> Result<Self> {
-        let (api, rx) = Handle::channel(32);
+        let (api, rx) = Handle::channel();
 
         let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone()).await?;
 
@@ -87,15 +89,11 @@ impl Topic {
         if !async_bootstrap {
             bootstrap_done.await?;
         }
-        
-        // Spawn publisher after bootstrap
-        let _ = api
-            .call(act!(actor => actor.start_publishing()))
-            .await;
 
-        let _ = api
-            .call(act!(actor => actor.start_bubble_merge()))
-            .await;
+        // Spawn publisher after bootstrap
+        let _ = api.call(act!(actor => actor.start_publishing())).await;
+
+        let _ = api.call(act!(actor => actor.start_bubble_merge())).await;
 
         let _ = api
             .call(act!(actor => actor.start_message_overlap_merge()))
@@ -127,11 +125,11 @@ impl Topic {
     }
 }
 
-impl Actor for TopicActor {
+impl Actor<anyhow::Error> for TopicActor {
     async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                Some(action) = self.rx.recv() => {
+                Ok(action) = self.rx.recv_async() => {
                     let _ = action(self).await;
                 }
                 _ = tokio::signal::ctrl_c() => {
@@ -144,10 +142,11 @@ impl Actor for TopicActor {
 }
 
 impl TopicActor {
-
     pub async fn start_publishing(&mut self) -> Result<()> {
-        let publisher =
-            Publisher::new(self.record_publisher.clone(), self.bootstrap.gossip_receiver().await?)?;
+        let publisher = Publisher::new(
+            self.record_publisher.clone(),
+            self.bootstrap.gossip_receiver().await?,
+        )?;
         self.publisher = Some(publisher);
         Ok(())
     }

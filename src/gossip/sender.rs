@@ -1,16 +1,16 @@
-use actor_helper::{Action, Actor, Handle, act};
+use actor_helper::{Action, Actor, Handle, Receiver, act};
 use anyhow::Result;
 use rand::seq::SliceRandom;
 
 #[derive(Debug, Clone)]
 pub struct GossipSender {
-    api: Handle<GossipSenderActor>,
+    api: Handle<GossipSenderActor, anyhow::Error>,
     _gossip: iroh_gossip::net::Gossip,
 }
 
 #[derive(Debug)]
 pub struct GossipSenderActor {
-    rx: tokio::sync::mpsc::Receiver<Action<GossipSenderActor>>,
+    rx: Receiver<Action<GossipSenderActor>>,
     gossip_sender: iroh_gossip::api::GossipSender,
     _gossip: iroh_gossip::net::Gossip,
 }
@@ -20,7 +20,7 @@ impl GossipSender {
         gossip_sender: iroh_gossip::api::GossipSender,
         gossip: iroh_gossip::net::Gossip,
     ) -> Self {
-        let (api, rx) = Handle::channel(1024);
+        let (api, rx) = Handle::channel();
         tokio::spawn({
             let gossip = gossip.clone();
             async move {
@@ -42,9 +42,9 @@ impl GossipSender {
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
         self.api
             .call(act!(actor => async move {
-                        actor.gossip_sender
-                    .broadcast(data.into()).await.map_err(|e| anyhow::anyhow!(e))
-                }))
+                    actor.gossip_sender
+                .broadcast(data.into()).await.map_err(|e| anyhow::anyhow!(e))
+            }))
             .await
     }
 
@@ -58,30 +58,31 @@ impl GossipSender {
 
     pub async fn join_peers(
         &self,
-        peers: Vec<iroh::NodeId>,
+        peers: Vec<iroh::EndpointId>,
         max_peers: Option<usize>,
     ) -> Result<()> {
         let mut peers = peers;
         if let Some(max_peers) = max_peers {
-            peers.shuffle(&mut rand::thread_rng());
+            peers.shuffle(&mut rand::rng());
             peers.truncate(max_peers);
         }
 
         self.api
             .call(act!(actor => async move {
-                actor.gossip_sender
-            .join_peers(peers)
+                    actor.gossip_sender
+                .join_peers(peers)
+                .await
+                .map_err(|e| anyhow::anyhow!(e))
+            }))
             .await
-            .map_err(|e| anyhow::anyhow!(e))
-        })).await
     }
 }
 
-impl Actor for GossipSenderActor {
+impl Actor<anyhow::Error> for GossipSenderActor {
     async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                Some(action) = self.rx.recv() => {
+                Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 _ = tokio::signal::ctrl_c() => {

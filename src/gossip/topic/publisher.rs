@@ -1,4 +1,4 @@
-use actor_helper::{Action, Actor, Handle};
+use actor_helper::{Action, Actor, Handle, Receiver};
 use std::time::Duration;
 
 use crate::{GossipReceiver, RecordPublisher};
@@ -6,12 +6,12 @@ use anyhow::Result;
 
 #[derive(Debug, Clone)]
 pub struct Publisher {
-    _api: Handle<PublisherActor>,
+    _api: Handle<PublisherActor, anyhow::Error>,
 }
 
 #[derive(Debug)]
 struct PublisherActor {
-    rx: tokio::sync::mpsc::Receiver<Action<PublisherActor>>,
+    rx: Receiver<Action<PublisherActor>>,
 
     record_publisher: RecordPublisher,
     gossip_receiver: GossipReceiver,
@@ -20,7 +20,7 @@ struct PublisherActor {
 
 impl Publisher {
     pub fn new(record_publisher: RecordPublisher, gossip_receiver: GossipReceiver) -> Result<Self> {
-        let (api, rx) = Handle::channel(32);
+        let (api, rx) = Handle::channel();
 
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(10));
@@ -38,11 +38,11 @@ impl Publisher {
     }
 }
 
-impl Actor for PublisherActor {
+impl Actor<anyhow::Error> for PublisherActor {
     async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                Some(action) = self.rx.recv() => {
+                Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 _ = self.ticker.tick() => {

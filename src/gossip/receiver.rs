@@ -1,19 +1,19 @@
 use std::collections::{HashSet, VecDeque};
 
-use actor_helper::{Action, Actor, Handle, act, act_ok};
+use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
 use anyhow::Result;
 use futures_lite::StreamExt;
 use sha2::Digest;
 
 #[derive(Debug, Clone)]
 pub struct GossipReceiver {
-    api: Handle<GossipReceiverActor>,
+    api: Handle<GossipReceiverActor, anyhow::Error>,
     _gossip: iroh_gossip::net::Gossip,
 }
 
 #[derive(Debug)]
 pub struct GossipReceiverActor {
-    rx: tokio::sync::mpsc::Receiver<Action<GossipReceiverActor>>,
+    rx: Receiver<Action<GossipReceiverActor>>,
     gossip_receiver: iroh_gossip::api::GossipReceiver,
     last_message_hashes: Vec<[u8; 32]>,
     msg_queue: VecDeque<Option<Result<iroh_gossip::api::Event, iroh_gossip::api::ApiError>>>,
@@ -30,7 +30,7 @@ impl GossipReceiver {
         gossip_receiver: iroh_gossip::api::GossipReceiver,
         gossip: iroh_gossip::net::Gossip,
     ) -> Self {
-        let (api, rx) = Handle::channel(1024);
+        let (api, rx) = Handle::channel();
         tokio::spawn({
             let gossip = gossip.clone();
             async move {
@@ -52,10 +52,10 @@ impl GossipReceiver {
         }
     }
 
-    pub async fn neighbors(&self) -> HashSet<iroh::NodeId> {
+    pub async fn neighbors(&self) -> HashSet<iroh::EndpointId> {
         self.api
             .call(act_ok!(actor => async move {
-                actor.gossip_receiver.neighbors().collect::<HashSet<iroh::NodeId>>()
+                actor.gossip_receiver.neighbors().collect::<HashSet<iroh::EndpointId>>()
             }))
             .await
             .expect("actor stopped")
@@ -87,11 +87,11 @@ impl GossipReceiver {
     }
 }
 
-impl Actor for GossipReceiverActor {
+impl Actor<anyhow::Error> for GossipReceiverActor {
     async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                Some(action) = self.rx.recv() => {
+                Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
                 raw_event = self.gossip_receiver.next() => {
@@ -105,16 +105,11 @@ impl Actor for GossipReceiverActor {
                             // this should never happen
                         }
                     }
-                    if let Some(Some(Ok(event))) = self.msg_queue.front() {
-                        match event {
-                            iroh_gossip::api::Event::Received(msg) => {
-                                let mut hash = sha2::Sha512::new();
-                                hash.update(msg.content.clone());
-                                if let Ok(lmh) = hash.finalize()[..32].try_into() {
-                                    self.last_message_hashes.push(lmh);
-                                }
-                            }
-                            _ => {}
+                    if let Some(Some(Ok(iroh_gossip::api::Event::Received(msg)))) = self.msg_queue.front() {
+                        let mut hash = sha2::Sha512::new();
+                        hash.update(msg.content.clone());
+                        if let Ok(lmh) = hash.finalize()[..32].try_into() {
+                            self.last_message_hashes.push(lmh);
                         }
                     }
                 }
