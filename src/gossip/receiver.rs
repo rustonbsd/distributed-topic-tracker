@@ -5,6 +5,7 @@ use std::collections::{HashSet, VecDeque};
 use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
 use anyhow::Result;
 use futures_lite::StreamExt;
+use iroh::EndpointId;
 use sha2::Digest;
 
 /// Gossip receiver that collects incoming messages and neighbor info.
@@ -60,10 +61,10 @@ impl GossipReceiver {
     }
 
     /// Get the set of currently connected neighbor node IDs.
-    pub async fn neighbors(&self) -> HashSet<iroh::NodeId> {
+    pub async fn neighbors(&self) -> HashSet<EndpointId> {
         self.api
             .call(act_ok!(actor => async move {
-                actor.gossip_receiver.neighbors().collect::<HashSet<iroh::NodeId>>()
+                actor.gossip_receiver.neighbors().collect::<HashSet<EndpointId>>()
             }))
             .await
             .expect("actor stopped")

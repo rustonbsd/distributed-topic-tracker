@@ -34,11 +34,11 @@ use distributed_topic_tracker::{TopicId, AutoDiscoveryGossip, RecordPublisher};
 async fn main() -> Result<()> {
     // Generate a new random secret key
     let secret_key = SecretKey::generate(&mut rand::rng());
+    let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
         .secret_key(secret_key.clone())
-        .discovery_n0()
         .bind()
         .await?;
 
@@ -55,8 +55,8 @@ async fn main() -> Result<()> {
     let initial_secret = b"my-initial-secret".to_vec();
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        endpoint.node_id().public(),
-        secret_key.secret().clone(),
+        signing_key.verifying_key(),
+        signing_key.clone(),
         None,
         initial_secret,
     );

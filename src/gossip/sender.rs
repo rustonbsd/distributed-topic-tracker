@@ -2,6 +2,7 @@
 
 use actor_helper::{Action, Actor, Handle, Receiver, act};
 use anyhow::Result;
+use iroh::EndpointId;
 use rand::seq::SliceRandom;
 
 /// Gossip sender that broadcasts messages to peers.
@@ -75,7 +76,7 @@ impl GossipSender {
     /// * `max_peers` - Optional maximum number of peers to join (randomly selected if exceeded)
     pub async fn join_peers(
         &self,
-        peers: Vec<iroh::NodeId>,
+        peers: Vec<EndpointId>,
         max_peers: Option<usize>,
     ) -> Result<()> {
         let mut peers = peers;

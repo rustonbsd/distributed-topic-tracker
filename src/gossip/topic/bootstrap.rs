@@ -4,6 +4,7 @@ use std::{collections::HashSet, time::Duration};
 
 use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
 use anyhow::Result;
+use iroh::EndpointId;
 use tokio::time::sleep;
 
 use crate::{
@@ -175,7 +176,7 @@ impl BootstrapActor {
                             }
                             v
                         })
-                        .filter_map(|node_id| iroh::NodeId::from_bytes(&node_id).ok())
+                        .filter_map(|node_id| EndpointId::from_bytes(&node_id).ok())
                         .collect::<HashSet<_>>();
 
                     tracing::debug!("Bootstrap: extracted {} potential bootstrap nodes", bootstrap_nodes.len());
