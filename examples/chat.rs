@@ -9,16 +9,15 @@ use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-
     // tracing init - only show distributed_topic_tracker logs
     use tracing_subscriber::filter::EnvFilter;
-    
+
     tracing_subscriber::fmt()
         .with_thread_ids(true)
         .with_ansi(true)
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("distributed_topic_tracker=debug"))
+                .unwrap_or_else(|_| EnvFilter::new("distributed_topic_tracker=debug")),
         )
         .init();
 

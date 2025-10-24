@@ -82,7 +82,7 @@ impl RecordContent {
     pub fn to<'a, T: Deserialize<'a>>(&'a self) -> anyhow::Result<T> {
         postcard::from_bytes::<T>(&self.0).map_err(|e| anyhow::anyhow!(e))
     }
-    
+
     /// Serialize from an arbitrary type using postcard.
     pub fn from_arbitrary<T: Serialize>(from: &T) -> anyhow::Result<Self> {
         Ok(Self(
@@ -197,10 +197,17 @@ impl RecordPublisher {
             .cloned()
             .collect::<HashSet<_>>();
 
-        tracing::debug!("RecordPublisher: found {} existing records for unix_minute {}", records.len(), record.unix_minute());
+        tracing::debug!(
+            "RecordPublisher: found {} existing records for unix_minute {}",
+            records.len(),
+            record.unix_minute()
+        );
 
         if records.len() >= crate::MAX_BOOTSTRAP_RECORDS {
-            tracing::debug!("RecordPublisher: max records reached ({}), skipping publish", crate::MAX_BOOTSTRAP_RECORDS);
+            tracing::debug!(
+                "RecordPublisher: max records reached ({}), skipping publish",
+                crate::MAX_BOOTSTRAP_RECORDS
+            );
             return Ok(());
         }
 
@@ -215,8 +222,11 @@ impl RecordPublisher {
         );
         let encrypted_record = record.encrypt(&encryption_key);
 
-        tracing::debug!("RecordPublisher: publishing record to DHT for unix_minute {}", record.unix_minute());
-        
+        tracing::debug!(
+            "RecordPublisher: publishing record to DHT for unix_minute {}",
+            record.unix_minute()
+        );
+
         self.dht
             .put_mutable(
                 sign_key.clone(),
@@ -236,8 +246,11 @@ impl RecordPublisher {
     ///
     /// Filters out records from this publisher's own node ID.
     pub async fn get_records(&self, unix_minute: u64) -> HashSet<Record> {
-        tracing::debug!("RecordPublisher: fetching records from DHT for unix_minute {}", unix_minute);
-        
+        tracing::debug!(
+            "RecordPublisher: fetching records from DHT for unix_minute {}",
+            unix_minute
+        );
+
         let topic_sign = crate::crypto::keys::signing_keypair(self.record_topic, unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
             self.record_topic,
@@ -258,8 +271,11 @@ impl RecordPublisher {
             )
             .await
             .unwrap_or_default();
-        
-        tracing::debug!("RecordPublisher: received {} raw records from DHT", records_iter.len());
+
+        tracing::debug!(
+            "RecordPublisher: received {} raw records from DHT",
+            records_iter.len()
+        );
 
         let verified_records = records_iter
             .iter()
@@ -271,7 +287,7 @@ impl RecordPublisher {
                                 true => {
                                     tracing::debug!("RecordPublisher: filtered out self");
                                     None
-                                },
+                                }
                                 false => Some(record),
                             },
                             Err(_) => None,
@@ -282,8 +298,11 @@ impl RecordPublisher {
                 },
             )
             .collect::<HashSet<_>>();
-        
-        tracing::debug!("RecordPublisher: verified {} records (filtered self)", verified_records.len());
+
+        tracing::debug!(
+            "RecordPublisher: verified {} records (filtered self)",
+            verified_records.len()
+        );
         verified_records
     }
 }

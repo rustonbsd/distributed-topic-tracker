@@ -101,7 +101,8 @@ impl BubbleMergeActor {
             let node_ids = records
                 .iter()
                 .flat_map(|record| {
-                    let mut endpoint_ids = if let Ok(content) = record.content::<GossipRecordContent>()
+                    let mut endpoint_ids = if let Ok(content) =
+                        record.content::<GossipRecordContent>()
                     {
                         content
                             .active_peers
@@ -122,7 +123,9 @@ impl BubbleMergeActor {
                         vec![]
                     };
                     if let Ok(endpoint_id) = EndpointId::from_bytes(&record.node_id()) {
-                        if endpoint_id != EndpointId::from_verifying_key(self.record_publisher.pub_key()) {
+                        if endpoint_id
+                            != EndpointId::from_verifying_key(self.record_publisher.pub_key())
+                        {
                             endpoint_ids.push(endpoint_id);
                         }
                     }

@@ -77,12 +77,16 @@ impl Actor<anyhow::Error> for MessageOverlapMergeActor {
 impl MessageOverlapMergeActor {
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let mut records = self.record_publisher.get_records(unix_minute-1).await;
+        let mut records = self.record_publisher.get_records(unix_minute - 1).await;
         records.extend(self.record_publisher.get_records(unix_minute).await);
-        
+
         let local_hashes = self.gossip_receiver.last_message_hashes().await;
-        tracing::debug!("MessageOverlapMerge: checking {} records with {} local message hashes", records.len(), local_hashes.len());
-        
+        tracing::debug!(
+            "MessageOverlapMerge: checking {} records with {} local message hashes",
+            records.len(),
+            local_hashes.len()
+        );
+
         if !local_hashes.is_empty() {
             let last_message_hashes = local_hashes;
             let peers_to_join = records
@@ -98,9 +102,12 @@ impl MessageOverlapMergeActor {
                     }
                 })
                 .collect::<Vec<_>>();
-            
-            tracing::debug!("MessageOverlapMerge: found {} peers with overlapping message hashes", peers_to_join.len());
-            
+
+            tracing::debug!(
+                "MessageOverlapMerge: found {} peers with overlapping message hashes",
+                peers_to_join.len()
+            );
+
             if !peers_to_join.is_empty() {
                 let node_ids = peers_to_join
                     .iter()
@@ -123,7 +130,10 @@ impl MessageOverlapMergeActor {
                     })
                     .collect::<HashSet<_>>();
 
-                tracing::debug!("MessageOverlapMerge: attempting to join {} node_ids with overlapping messages", node_ids.len());
+                tracing::debug!(
+                    "MessageOverlapMerge: attempting to join {} node_ids with overlapping messages",
+                    node_ids.len()
+                );
 
                 self.gossip_sender
                     .join_peers(
@@ -131,11 +141,15 @@ impl MessageOverlapMergeActor {
                         Some(super::MAX_JOIN_PEERS_COUNT),
                     )
                     .await?;
-                
-                tracing::debug!("MessageOverlapMerge: join_peers request sent for split-brain recovery");
+
+                tracing::debug!(
+                    "MessageOverlapMerge: join_peers request sent for split-brain recovery"
+                );
             }
         } else {
-            tracing::debug!("MessageOverlapMerge: no local message hashes yet, skipping overlap detection");
+            tracing::debug!(
+                "MessageOverlapMerge: no local message hashes yet, skipping overlap detection"
+            );
         }
         Ok(())
     }
