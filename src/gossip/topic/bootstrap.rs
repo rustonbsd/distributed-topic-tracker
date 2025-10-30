@@ -10,7 +10,8 @@ use tokio::time::sleep;
 use crate::{
     GossipSender,
     crypto::Record,
-    gossip::{GossipRecordContent, receiver::GossipReceiver},
+    gossip::GossipRecordContent,
+    core::receiver::GossipReceiver
 };
 
 /// Manages the peer discovery and joining process.

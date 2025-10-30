@@ -2,16 +2,14 @@ use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
-use ed25519_dalek::SigningKey;
-
 // Imports from distrubuted-topic-tracker
-use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
+use distributed_topic_tracker::AutoDiscoveryGossip;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Generate a new random secret key
     let secret_key = SecretKey::generate(&mut rand::rng());
-    let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&secret_key.to_bytes());
 
     // Set up endpoint with discovery enabled
     let endpoint = Endpoint::builder()
@@ -27,21 +25,10 @@ async fn main() -> Result<()> {
         .accept(iroh_gossip::ALPN, gossip.clone())
         .spawn();
 
-    let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
-    let initial_secret = b"my-initial-secret".to_vec();
-
-    let record_publisher = RecordPublisher::new(
-        topic_id.clone(),
-        signing_key.verifying_key(),
-        signing_key.clone(),
-        None,
-        initial_secret,
-    );
+    
+    let topic_id = "my-iroh-gossip-topic-experimental".as_bytes().to_vec();
     let (gossip_sender, gossip_receiver) = gossip
-        .subscribe_and_join_with_auto_discovery(record_publisher)
-        .await?
-        .split()
-        .await?;
+        .subscribe_and_join_with_auto_discovery(topic_id, signing_key).await?.split().await;
 
     tokio::spawn(async move {
         while let Some(Ok(event)) = gossip_receiver.next().await {

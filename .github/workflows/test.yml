@@ -13,7 +13,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  e2e-tests:
+  e2e-test:
     name: End-to-End Tests
     runs-on: ubuntu-latest
 
@@ -22,6 +22,19 @@ jobs:
     
     - name: Build Docker image
       run: docker build -t distributed-topic-tracker .
+    
+    - name: Run end-to-end test
+      run: ./test-e2e.sh
+      
+  e2e-test-experimental:
+    name: End-to-End Tests (Experimental)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: docker build -t distributed-topic-tracker --file Dockerfile.experimental .
     
     - name: Run end-to-end test
       run: ./test-e2e.sh

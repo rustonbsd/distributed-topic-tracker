@@ -14,6 +14,7 @@ edition = "2024"
 [features]
 default = ["iroh-gossip"]
 iroh-gossip = ["dep:iroh", "dep:iroh-gossip"]
+experimental = ["dep:mainline_exp"]
 
 
 [dependencies]
@@ -32,7 +33,6 @@ futures-lite = "2"
 
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-dht = { git="https://github.com/Nuhvi/mainline", branch="main", default-features = false, features = ["async"]}
 rand = { version = "0.9", default-features = false, features = ["std", "std_rng"] }
 actor-helper = { version = "0.2", features = ["tokio", "anyhow"] }
 postcard = "1"
@@ -40,6 +40,9 @@ serde = { version = "1", default-features = false, features = ["std"] }
 
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "env-filter", "ansi"] }
+
+mainline = { version = "6.0.0", default-features = false, features = ["async"] }
+mainline_exp = { git = "https://github.com/Nuhvi/mainline", branch = "main", default-features = false, features = ["async"], optional = true, package = "dht" }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -52,6 +55,7 @@ required-features = ["iroh-gossip"]
 name = "tests"
 
 # only build examples if the "iroh-gossip" feature is enabled
+
 [[example]]
 name = "chat"
 required-features = ["iroh-gossip"]
@@ -71,3 +75,11 @@ required-features = ["iroh-gossip"]
 [[example]]
 name = "simple"
 required-features = ["iroh-gossip"]
+
+[[example]]
+name = "chat_experimental"
+required-features = ["iroh-gossip", "experimental"]
+
+[[example]]
+name = "e2e_test_experimental"
+required-features = ["iroh-gossip", "experimental"]

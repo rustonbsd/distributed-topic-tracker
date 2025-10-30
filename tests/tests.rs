@@ -4,7 +4,7 @@ use distributed_topic_tracker::{
     DefaultSecretRotation, EncryptedRecord, GossipRecordContent, Record, RecordTopic,
     RotationHandle, encryption_keypair, salt, signing_keypair, unix_minute,
 };
-use dht::SigningKey;
+use ed25519_dalek::SigningKey;
 
 #[test]
 fn test_record_serialization_roundtrip() {
