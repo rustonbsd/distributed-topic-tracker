@@ -4,7 +4,7 @@ use iroh_gossip::{api::Event, net::Gossip};
 
 // Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
-use mainline::SigningKey;
+use dht::SigningKey;
 
 #[tokio::main]
 async fn main() -> Result<()> {
