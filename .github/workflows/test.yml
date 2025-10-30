@@ -24,7 +24,7 @@ jobs:
       run: docker build -t distributed-topic-tracker .
     
     - name: Run end-to-end test
-      run: ./test-e2e.sh
+      run: COMPOSE_FILE=docker-compose-experimental.yaml ./test-e2e.sh
       
   e2e-test-experimental:
     name: End-to-End Tests (Experimental)
@@ -37,5 +37,5 @@ jobs:
       run: docker build -t distributed-topic-tracker --file Dockerfile.experimental .
     
     - name: Run end-to-end test
-      run: ./test-e2e.sh
+      run: COMPOSE_FILE=docker-compose-experimental.yaml ./test-e2e.sh
 

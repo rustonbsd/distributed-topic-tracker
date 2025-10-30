@@ -1,0 +1,24 @@
+services:
+  node1:
+    build:
+      context: .
+      dockerfile: Dockerfile.experimental
+    container_name: dtt-node1
+    environment:
+      - RUST_LOG=info
+
+  node2:
+    build:
+      context: .
+      dockerfile: Dockerfile.experimental
+    container_name: dtt-node2
+    environment:
+      - RUST_LOG=info
+
+  node3:
+    build: 
+      context: .
+      dockerfile: Dockerfile.experimental
+    container_name: dtt-node3
+    environment:
+      - RUST_LOG=info
