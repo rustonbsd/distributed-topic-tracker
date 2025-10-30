@@ -9,7 +9,7 @@ use actor_helper::{Action, Actor, Handle, Receiver, act};
 use anyhow::{Context, Result, bail};
 use ed25519_dalek::VerifyingKey;
 use futures_lite::StreamExt;
-use mainline::{MutableItem, SigningKey};
+use dht::{MutableItem, SigningKey};
 
 const RETRY_DEFAULT: usize = 3;
 
@@ -25,7 +25,7 @@ pub struct Dht {
 #[derive(Debug)]
 struct DhtActor {
     rx: Receiver<Action<Self>>,
-    dht: Option<mainline::async_dht::AsyncDht>,
+    dht: Option<dht::async_dht::AsyncDht>,
 }
 
 impl Dht {
@@ -153,13 +153,13 @@ impl DhtActor {
 
             let item = if let Some(mut_item) = most_recent_result {
                 MutableItem::new(
-                    signing_key.clone(),
+                    &signing_key,
                     &data,
                     mut_item.seq() + 1,
                     salt.as_deref(),
                 )
             } else {
-                MutableItem::new(signing_key.clone(), &data, 0, salt.as_deref())
+                MutableItem::new(&signing_key, &data, 0, salt.as_deref())
             };
 
             let put_result = match tokio::time::timeout(
@@ -186,7 +186,7 @@ impl DhtActor {
     }
 
     async fn reset(&mut self) -> Result<()> {
-        self.dht = Some(mainline::Dht::builder().build()?.as_async());
+        self.dht = Some(dht::Dht::builder().build()?.as_async());
         Ok(())
     }
 }

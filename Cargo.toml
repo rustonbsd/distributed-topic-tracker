@@ -32,7 +32,7 @@ futures-lite = "2"
 
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-mainline = { version = "6", default-features = false, features = ["async"]}
+dht = { git="https://github.com/Nuhvi/mainline", branch="main", default-features = false, features = ["async"]}
 rand = { version = "0.9", default-features = false, features = ["std", "std_rng"] }
 actor-helper = { version = "0.2", features = ["tokio", "anyhow"] }
 postcard = "1"
