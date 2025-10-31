@@ -12,7 +12,7 @@ docker compose --file $COMPOSE_FILE down --remove-orphans || true
 
 # Build and start the containers
 echo "Building and starting containers..."
-docker compose --file $COMPOSE_FILE up --build -d
+TOPIC_ID=$RANDOM docker compose --file $COMPOSE_FILE up --build -d
 
 # Function to check if a container has printed "Joined topic"
 check_joined_topic() {

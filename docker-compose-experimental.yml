@@ -6,6 +6,8 @@ services:
     container_name: dtt-node1
     environment:
       - RUST_LOG=info
+      - TOPIC_ID=${TOPIC_ID}
+    command: sh -c "e2e_test_experimental 2 $${TOPIC_ID}"
 
   node2:
     build:
@@ -14,6 +16,8 @@ services:
     container_name: dtt-node2
     environment:
       - RUST_LOG=info
+      - TOPIC_ID=${TOPIC_ID}
+    command: sh -c "e2e_test_experimental 2 $${TOPIC_ID}"
 
   node3:
     build: 
@@ -22,3 +26,5 @@ services:
     container_name: dtt-node3
     environment:
       - RUST_LOG=info
+      - TOPIC_ID=${TOPIC_ID}
+    command: sh -c "e2e_test_experimental 2 $${TOPIC_ID}"
