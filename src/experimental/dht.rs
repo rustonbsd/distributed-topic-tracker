@@ -28,14 +28,9 @@ impl Dht {
         if self.dht.is_none() {
             self.reset()?;
         }
-        let mut hasher = sha2::Sha512::new();
-        hasher.update(topic_bytes);
-        let hash: [u8; 20] = hasher.finalize()[..20]
-            .try_into()
-            .context("Failed to convert hash")?;
 
         let dht = self.dht.as_mut().context("DHT not initialized")?;
-        let id = Id::from_bytes(hash)?;
+        let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
         let topic_stream = dht.get_signed_peers(id).await.collect::<Vec<_>>();
         Ok(topic_stream
@@ -50,18 +45,20 @@ impl Dht {
         if self.dht.is_none() {
             self.reset()?;
         }
-        let mut hasher = sha2::Sha512::new();
-        hasher.update(topic_bytes);
-        let hash: [u8; 20] = hasher.finalize()[..20]
-            .try_into()
-            .context("Failed to convert hash")?;
-
+        
         let dht = self.dht.as_mut().context("DHT not initialized")?;
-        let id = Id::from_bytes(hash)?;
+        let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
         dht.announce_signed_peer(id, &self.signing_key)
             .await
             .map(|_| ())
             .map_err(|e| anyhow::anyhow!("Failed to announce signed peer: {}", e))
     }
+}
+
+fn topic_hash_20(topic_bytes: &Vec<u8>) -> [u8; 20] {
+    let mut hasher = sha2::Sha512::new();
+    hasher.update("/iroh/distributed-topic-tracker");
+    hasher.update(topic_bytes);
+    hasher.finalize()[..20].try_into().expect("hashing failed")
 }

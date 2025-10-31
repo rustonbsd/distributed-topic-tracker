@@ -10,7 +10,7 @@ use iroh_gossip::Gossip;
 use sha2::Digest;
 use tokio::{sync::Mutex, task::JoinHandle};
 
-use crate::{dht_experimental::Dht, receiver::GossipReceiver, sender::GossipSender};
+use crate::{experimental::Dht, receiver::GossipReceiver, sender::GossipSender};
 
 pub trait AutoDiscoveryGossip {
     #[allow(async_fn_in_trait)]
@@ -199,7 +199,8 @@ impl Topic {
 }
 
 fn topic_hash_32(topic_bytes: &Vec<u8>) -> [u8; 32] {
-    let mut hasher = sha2::Sha256::new();
+    let mut hasher = sha2::Sha512::new();
+    hasher.update("/iroh/distributed-topic-tracker");
     hasher.update(topic_bytes);
     hasher.finalize()[..32].try_into().expect("hashing failed")
 }
