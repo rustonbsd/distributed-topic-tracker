@@ -44,6 +44,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["s
 mainline = { version = "6.0.0", default-features = false, features = ["async"] }
 mainline_exp = { git = "https://github.com/Nuhvi/mainline", branch = "main", default-features = false, features = ["async"], optional = true, package = "dht" }
 
+hex = "0.4"
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

@@ -12,19 +12,20 @@ use tokio::time::Instant;
 async fn main() -> Result<()> {
     
     use tracing_subscriber::filter::EnvFilter;
-
     tracing_subscriber::fmt()
         .with_thread_ids(true)
         .with_ansi(true)
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("distributed_topic_tracker=debug")),
+                .unwrap_or_else(|_| EnvFilter::new("distributed_topic_tracker=debug,dht=debug")),
         )
         .init();
+    
     
 
     // from input first param
     let expected_neighbours = std::env::args().nth(1).unwrap_or("1".to_string()).parse::<usize>()?;
+    let topic_salt = std::env::args().nth(2).unwrap_or("default-salt".to_string());
 
     // Generate a new random secret key
     let secret_key = SecretKey::generate(&mut rand::rng());
@@ -45,7 +46,7 @@ async fn main() -> Result<()> {
         .spawn();
 
     let cold_start_timer = Instant::now();
-    let topic_id = "my-iroh-gossip-topic-experimental-1".as_bytes().to_vec();
+    let topic_id = format!("my-iroh-gossip-topic-experimental-{topic_salt}").as_bytes().to_vec();
     let (gossip_sender, gossip_receiver) = gossip
         .subscribe_and_join_with_auto_discovery(topic_id, signing_key)
         .await?

@@ -129,7 +129,7 @@ impl Topic {
         let dht = self.dht.clone();
         let topic_bytes = self.topic_bytes.clone();
         Ok(tokio::spawn(async move {
-            let mut backoff = 0;
+            let mut backoff = 5;
             while is_running.load(std::sync::atomic::Ordering::Relaxed) {
                 let wait_dur = {
                     let mut lock = dht.lock().await;
@@ -140,7 +140,7 @@ impl Topic {
                         Duration::from_secs(backoff.min(300))
                     } else {
                         tracing::info!("self_announce: success");
-                        backoff = 0;
+                        backoff = 5;
                         Duration::from_secs(300)
                     }
                 };
@@ -157,11 +157,18 @@ impl Topic {
         let receiver = self.receiver.clone();
         let added_nodes = self.added_nodes.clone();
         Ok(tokio::spawn(async move {
-            let mut backoff = 0;
+            let mut backoff = 5;
             while is_running.load(std::sync::atomic::Ordering::Relaxed) {
                 let peers = {
                     let mut lock = dht.lock().await;
-                    lock.get_peers(&topic_bytes).await.unwrap_or_default().clone()
+                    let res = lock.get_peers(&topic_bytes).await;
+                    
+                    if let Err(e) = res {
+                        tracing::error!("bootstrap get_peers error: {e:?}");
+                        Vec::new()
+                    } else {
+                        res.unwrap_or_default().clone()
+                    }
                 };
                 tracing::debug!("bootstrap found {} peers", peers.len());
                 if !peers.is_empty() {
@@ -198,7 +205,7 @@ impl Topic {
                     backoff += 1;
                     tokio::time::sleep(Duration::from_secs(backoff.min(60))).await;
                 } else {
-                    backoff = 0;
+                    backoff = 5;
                     tracing::info!("bootstrap successful");
                     tokio::time::sleep(Duration::from_secs(60)).await;
                 }

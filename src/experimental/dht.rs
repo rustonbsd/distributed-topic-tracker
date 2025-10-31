@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use ed25519_dalek::VerifyingKey;
 
@@ -24,14 +26,14 @@ impl Dht {
             return Ok(());
         }
         let dht = MainlineDht::builder()
-                .extra_bootstrap(&["pkarr.rustonbsd.com:6881"])
-                .build()?
-                .as_async();
-        if  !dht.bootstrapped().await {
+            .extra_bootstrap(&["pkarr.rustonbsd.com:6881"])
+            .build()?
+            .as_async();
+        if !dht.bootstrapped().await {
             anyhow::bail!("DHT bootstrap failed");
         }
         self.dht = Some(dht);
-            
+
         Ok(())
     }
 
@@ -43,9 +45,15 @@ impl Dht {
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
-        let topic_stream = dht.get_signed_peers(id).await.collect::<Vec<_>>();
-        Ok(topic_stream
-            .await
+        let mut stream = dht.get_signed_peers(id).await;
+        let mut results = vec![];
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        while let Ok(Some(item)) = tokio::time::timeout_at(deadline, stream.next()).await {
+            results.push(item);
+        }
+
+        Ok(results
             .iter()
             .flatten()
             .filter_map(|item| VerifyingKey::from_bytes(item.key()).ok())
@@ -60,10 +68,13 @@ impl Dht {
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
-        tokio::time::timeout(std::time::Duration::from_secs(5), dht.announce_signed_peer(id, &self.signing_key))
-            .await
-            .map(|_| ())
-            .map_err(|e| anyhow::anyhow!("Failed to announce signed peer: {e}"))
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            dht.announce_signed_peer(id, &self.signing_key),
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| anyhow::anyhow!("Failed to announce signed peer: {e}"))
     }
 }
 
