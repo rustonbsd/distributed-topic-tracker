@@ -7,12 +7,14 @@ set -e
 
 echo "Starting end-to-end test..."
 
+export TOPIC_ID=$RANDOM
+
 # Clean up any existing containers
 docker compose --file $COMPOSE_FILE down --remove-orphans || true
 
 # Build and start the containers
 echo "Building and starting containers..."
-TOPIC_ID=$RANDOM docker compose --file $COMPOSE_FILE up --build -d
+docker compose --file $COMPOSE_FILE up --build -d
 
 # Function to check if a container has printed "Joined topic"
 check_joined_topic() {
