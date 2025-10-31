@@ -133,11 +133,13 @@ impl Topic {
             while is_running.load(std::sync::atomic::Ordering::Relaxed) {
                 let wait_dur = {
                     let mut lock = dht.lock().await;
+
                     if let Err(e) = lock.announce_self(&topic_bytes).await {
-                        tracing::debug!("self_announce: {e}");
+                        tracing::warn!("self_announce: {e}");
                         backoff += 1;
                         Duration::from_secs(backoff.min(300))
                     } else {
+                        tracing::info!("self_announce: success");
                         backoff = 0;
                         Duration::from_secs(300)
                     }
@@ -155,12 +157,13 @@ impl Topic {
         let receiver = self.receiver.clone();
         let added_nodes = self.added_nodes.clone();
         Ok(tokio::spawn(async move {
+            let mut backoff = 0;
             while is_running.load(std::sync::atomic::Ordering::Relaxed) {
                 let peers = {
                     let mut lock = dht.lock().await;
-                    lock.get_peers(&topic_bytes).await.unwrap_or_default()
+                    lock.get_peers(&topic_bytes).await.unwrap_or_default().clone()
                 };
-                
+                tracing::debug!("bootstrap found {} peers", peers.len());
                 if !peers.is_empty() {
                     let mut added_nodes_lock = added_nodes.lock().await;
                     let unknown_peers = peers
@@ -192,9 +195,12 @@ impl Topic {
 
                 if !receiver.is_joined().await || added_nodes.lock().await.len() < 2 {
                     tracing::debug!("not enough peers yet, waiting before next bootstrap attempt");
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    backoff += 1;
+                    tokio::time::sleep(Duration::from_secs(backoff.min(60))).await;
                 } else {
-                    tokio::time::sleep(Duration::from_secs(20)).await;
+                    backoff = 0;
+                    tracing::info!("bootstrap successful");
+                    tokio::time::sleep(Duration::from_secs(60)).await;
                 }
             }
         }))

@@ -20,6 +20,9 @@ impl Dht {
     }
 
     pub async fn reset(&mut self) -> Result<()> {
+        if self.dht.is_some() {
+            return Ok(());
+        }
         let dht = MainlineDht::builder()
                 .extra_bootstrap(&["pkarr.rustonbsd.com:6881"])
                 .build()?
@@ -57,7 +60,7 @@ impl Dht {
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
-        dht.announce_signed_peer(id, &self.signing_key)
+        tokio::time::timeout(std::time::Duration::from_secs(5), dht.announce_signed_peer(id, &self.signing_key))
             .await
             .map(|_| ())
             .map_err(|e| anyhow::anyhow!("Failed to announce signed peer: {e}"))

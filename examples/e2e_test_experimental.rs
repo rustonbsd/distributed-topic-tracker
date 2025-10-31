@@ -10,7 +10,7 @@ use tokio::time::Instant;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    /*
+    
     use tracing_subscriber::filter::EnvFilter;
 
     tracing_subscriber::fmt()
@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| EnvFilter::new("distributed_topic_tracker=debug")),
         )
         .init();
-    */
+    
 
     // from input first param
     let expected_neighbours = std::env::args().nth(1).unwrap_or("1".to_string()).parse::<usize>()?;
@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
         .spawn();
 
     let cold_start_timer = Instant::now();
-    let topic_id = "my-iroh-gossip-topic-experimental".as_bytes().to_vec();
+    let topic_id = "my-iroh-gossip-topic-experimental-1".as_bytes().to_vec();
     let (gossip_sender, gossip_receiver) = gossip
         .subscribe_and_join_with_auto_discovery(topic_id, signing_key)
         .await?
@@ -78,6 +78,8 @@ async fn main() -> Result<()> {
     }
 
     println!("[finished]");
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     // successfully joined
     // exit with code 0
