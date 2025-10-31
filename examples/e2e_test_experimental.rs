@@ -25,10 +25,12 @@ async fn main() -> Result<()> {
         .accept(iroh_gossip::ALPN, gossip.clone())
         .spawn();
 
-    
     let topic_id = "my-iroh-gossip-topic-experimental".as_bytes().to_vec();
     let (gossip_sender, gossip_receiver) = gossip
-        .subscribe_and_join_with_auto_discovery(topic_id, signing_key).await?.split().await;
+        .subscribe_and_join_with_auto_discovery(topic_id, signing_key)
+        .await?
+        .split()
+        .await;
 
     tokio::spawn(async move {
         while let Some(Ok(event)) = gossip_receiver.next().await {

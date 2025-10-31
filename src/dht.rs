@@ -159,12 +159,7 @@ impl DhtActor {
                     salt.as_deref(),
                 )
             } else {
-                MutableItem::new(
-                    signing_key.clone(),
-                    &data,
-                    0,
-                    salt.as_deref(),
-                )
+                MutableItem::new(signing_key.clone(), &data, 0, salt.as_deref())
             };
 
             let put_result = match tokio::time::timeout(

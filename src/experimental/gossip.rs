@@ -47,7 +47,10 @@ impl AutoDiscoveryGossip for iroh_gossip::net::Gossip {
         signing_key: SigningKey,
     ) -> anyhow::Result<Topic> {
         let gossip_topic: iroh_gossip::api::GossipTopic = self
-            .subscribe(iroh_gossip::proto::TopicId::from_bytes(topic_hash_32(&topic_id)), vec![])
+            .subscribe(
+                iroh_gossip::proto::TopicId::from_bytes(topic_hash_32(&topic_id)),
+                vec![],
+            )
             .await?;
         let (gossip_sender, gossip_receiver) = gossip_topic.split();
         let (gossip_sender, gossip_receiver) = (
@@ -96,7 +99,8 @@ impl Topic {
     }
 
     pub async fn stop_background_loops(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::Relaxed);        
+        self.running
+            .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 }
 

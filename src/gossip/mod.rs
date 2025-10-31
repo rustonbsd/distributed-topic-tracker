@@ -4,15 +4,14 @@
 //! and topic joining without prior knowledge of peers. Includes bubble detection
 //! and message overlap merging for cluster topology optimization.
 
-
 mod merge;
 mod topic;
 
-pub use merge::{BubbleMerge, MessageOverlapMerge};
-pub use topic::{Bootstrap, Publisher, Topic, TopicId};
 pub use crate::core::receiver::GossipReceiver;
 pub use crate::core::sender::GossipSender;
+pub use merge::{BubbleMerge, MessageOverlapMerge};
 use serde::{Deserialize, Serialize};
+pub use topic::{Bootstrap, Publisher, Topic, TopicId};
 
 use crate::RecordPublisher;
 

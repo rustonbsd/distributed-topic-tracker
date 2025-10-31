@@ -1,5 +1,5 @@
-mod gossip;
 mod dht;
+mod gossip;
 
-pub use gossip::{AutoDiscoveryGossip, Topic};
 pub use dht::Dht;
+pub use gossip::{AutoDiscoveryGossip, Topic};

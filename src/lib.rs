@@ -2,7 +2,6 @@
 
 mod core;
 
-
 #[cfg(not(feature = "experimental"))]
 mod crypto;
 #[cfg(not(feature = "experimental"))]
@@ -13,15 +12,15 @@ pub use core::*;
 #[cfg(feature = "iroh-gossip")]
 mod gossip;
 #[cfg(not(feature = "experimental"))]
+pub use crypto::{
+    DefaultSecretRotation, EncryptedRecord, Record, RecordPublisher, RecordTopic, RotationHandle,
+    SecretRotation, encryption_keypair, salt, signing_keypair,
+};
+#[cfg(not(feature = "experimental"))]
 #[cfg(feature = "iroh-gossip")]
 pub use gossip::{
     AutoDiscoveryGossip, Bootstrap, BubbleMerge, GossipReceiver, GossipRecordContent, GossipSender,
     MessageOverlapMerge, Publisher, Topic, TopicId,
-};
-#[cfg(not(feature = "experimental"))]
-pub use crypto::{
-    DefaultSecretRotation, EncryptedRecord, Record, RecordPublisher, RecordTopic, RotationHandle,
-    SecretRotation, encryption_keypair, salt, signing_keypair,
 };
 #[cfg(not(feature = "experimental"))]
 pub use mainline::Dht;
@@ -50,13 +49,11 @@ pub fn unix_minute(minute_offset: i64) -> u64 {
     ((chrono::Utc::now().timestamp() as f64 / 60.0f64).floor() as i64 + minute_offset) as u64
 }
 
-
 // Experimental announce_signed_peer and get_signed_peers DHT implementation
 #[cfg(feature = "experimental")]
 mod experimental;
 #[cfg(feature = "experimental")]
 pub use experimental::{AutoDiscoveryGossip, Topic};
-
 
 #[cfg(feature = "experimental")]
 pub use mainline_exp::Dht;

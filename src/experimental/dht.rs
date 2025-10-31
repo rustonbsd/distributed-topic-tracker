@@ -20,7 +20,12 @@ impl Dht {
     }
 
     pub fn reset(&mut self) -> Result<()> {
-        self.dht = Some(MainlineDht::builder().extra_bootstrap(&["pkarr.rustonbsd.com:6881"]).build()?.as_async());
+        self.dht = Some(
+            MainlineDht::builder()
+                .extra_bootstrap(&["pkarr.rustonbsd.com:6881"])
+                .build()?
+                .as_async(),
+        );
         Ok(())
     }
 
