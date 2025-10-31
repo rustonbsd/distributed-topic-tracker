@@ -23,4 +23,4 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /app/target/release/examples/e2e_test_experimental /usr/local/bin/e2e_test_experimental
 
 # Set the default command
-CMD ["e2e_test_experimental"]
+CMD ["e2e_test_experimental","2"]

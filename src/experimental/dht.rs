@@ -19,19 +19,22 @@ impl Dht {
         }
     }
 
-    pub fn reset(&mut self) -> Result<()> {
-        self.dht = Some(
-            MainlineDht::builder()
+    pub async fn reset(&mut self) -> Result<()> {
+        let dht = MainlineDht::builder()
                 .extra_bootstrap(&["pkarr.rustonbsd.com:6881"])
                 .build()?
-                .as_async(),
-        );
+                .as_async();
+        if  !dht.bootstrapped().await {
+            anyhow::bail!("DHT bootstrap failed");
+        }
+        self.dht = Some(dht);
+            
         Ok(())
     }
 
     pub async fn get_peers(&mut self, topic_bytes: &Vec<u8>) -> Result<Vec<VerifyingKey>> {
         if self.dht.is_none() {
-            self.reset()?;
+            self.reset().await?;
         }
 
         let dht = self.dht.as_mut().context("DHT not initialized")?;
@@ -48,7 +51,7 @@ impl Dht {
 
     pub async fn announce_self(&mut self, topic_bytes: &Vec<u8>) -> Result<()> {
         if self.dht.is_none() {
-            self.reset()?;
+            self.reset().await?;
         }
 
         let dht = self.dht.as_mut().context("DHT not initialized")?;
@@ -57,7 +60,7 @@ impl Dht {
         dht.announce_signed_peer(id, &self.signing_key)
             .await
             .map(|_| ())
-            .map_err(|e| anyhow::anyhow!("Failed to announce signed peer: {}", e))
+            .map_err(|e| anyhow::anyhow!("Failed to announce signed peer: {e}"))
     }
 }
 

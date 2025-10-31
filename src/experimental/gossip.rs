@@ -129,13 +129,20 @@ impl Topic {
         let dht = self.dht.clone();
         let topic_bytes = self.topic_bytes.clone();
         Ok(tokio::spawn(async move {
+            let mut backoff = 0;
             while is_running.load(std::sync::atomic::Ordering::Relaxed) {
-                {
+                let wait_dur = {
                     let mut lock = dht.lock().await;
-                    let res = lock.announce_self(&topic_bytes).await;
-                    tracing::debug!("self_announce: {:?}", res);
-                }
-                tokio::time::sleep(Duration::from_secs(300)).await;
+                    if let Err(e) = lock.announce_self(&topic_bytes).await {
+                        tracing::debug!("self_announce: {e}");
+                        backoff += 1;
+                        Duration::from_secs(backoff.min(300))
+                    } else {
+                        backoff = 0;
+                        Duration::from_secs(300)
+                    }
+                };
+                tokio::time::sleep(wait_dur).await;
             }
         }))
     }
@@ -145,6 +152,7 @@ impl Topic {
         let dht = self.dht.clone();
         let topic_bytes = self.topic_bytes.clone();
         let sender = self.sender.clone();
+        let receiver = self.receiver.clone();
         let added_nodes = self.added_nodes.clone();
         Ok(tokio::spawn(async move {
             while is_running.load(std::sync::atomic::Ordering::Relaxed) {
@@ -152,6 +160,7 @@ impl Topic {
                     let mut lock = dht.lock().await;
                     lock.get_peers(&topic_bytes).await.unwrap_or_default()
                 };
+                
                 if !peers.is_empty() {
                     let mut added_nodes_lock = added_nodes.lock().await;
                     let unknown_peers = peers
@@ -165,24 +174,23 @@ impl Topic {
                         })
                         .collect::<Vec<VerifyingKey>>();
 
-                    if let Err(e) = sender
-                        .join_peers(
-                            unknown_peers
-                                .iter()
-                                .filter_map(|p| PublicKey::from_bytes(p.as_bytes()).ok())
-                                .collect::<Vec<PublicKey>>(),
-                            Some(5),
-                        )
-                        .await
-                    {
-                        tracing::debug!("bootstrap join_peers error: {:?}", e);
-                    } else {
-                        tracing::debug!("bootstrap joined {} new peers", unknown_peers.len());
-                        added_nodes_lock.extend(unknown_peers);
+                    for p in unknown_peers {
+                        if let Err(e) = sender
+                            .join_peers(vec![PublicKey::from_verifying_key(p)],
+                                None,
+                            )
+                            .await
+                        {
+                            tracing::debug!("bootstrap join_peers error: {:?}", e);
+                        } else {
+                            tracing::debug!("bootstrap joined new peers");
+                        }
+                        added_nodes_lock.insert(p);
                     }
+                    
                 }
 
-                if added_nodes.lock().await.len() < 2 {
+                if !receiver.is_joined().await || added_nodes.lock().await.len() < 2 {
                     tracing::debug!("not enough peers yet, waiting before next bootstrap attempt");
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 } else {
@@ -193,10 +201,7 @@ impl Topic {
     }
 
     pub(self) async fn wait_for_join(&self) {
-        loop {
-            if self.added_nodes.lock().await.len() >= 2 {
-                break;
-            }
+        while !self.receiver.is_joined().await {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
