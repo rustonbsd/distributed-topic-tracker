@@ -20,7 +20,7 @@ impl Dht {
     }
 
     pub fn reset(&mut self) -> Result<()> {
-        self.dht = Some(MainlineDht::builder().build()?.as_async());
+        self.dht = Some(MainlineDht::builder().extra_bootstrap(&["pkarr.rustonbsd.com:6881"]).build()?.as_async());
         Ok(())
     }
 
@@ -45,7 +45,7 @@ impl Dht {
         if self.dht.is_none() {
             self.reset()?;
         }
-        
+
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
