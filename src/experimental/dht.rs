@@ -45,7 +45,7 @@ impl Dht {
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
-        let mut stream = dht.get_signed_peers(id).await;
+        let mut stream = dht.get_signed_peers(id, Some(chrono::Utc::now().timestamp()-60)).await;
         let mut results = vec![];
 
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);

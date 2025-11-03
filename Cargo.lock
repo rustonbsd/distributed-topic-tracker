@@ -751,7 +751,7 @@ dependencies = [
 [[package]]
 name = "dht"
 version = "6.1.0"
-source = "git+https://github.com/Nuhvi/mainline?branch=main#e20393e5d92f6c7b7b84f12ff01bc507c15ebc62"
+source = "git+https://github.com/rustonbsd/mainline?branch=feat-get-signed-peers-ttl#aad2154c83ffb238f588b7ba322e7704b9106431"
 dependencies = [
  "crc",
  "document-features",

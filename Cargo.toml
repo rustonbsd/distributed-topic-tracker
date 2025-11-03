@@ -42,7 +42,7 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "env-filter", "ansi"] }
 
 mainline = { version = "6.0.0", default-features = false, features = ["async"] }
-mainline_exp = { git = "https://github.com/Nuhvi/mainline", branch = "main", default-features = false, features = ["async"], optional = true, package = "dht" }
+mainline_exp = { git = "https://github.com/rustonbsd/mainline", branch = "feat-get-signed-peers-ttl", default-features = false, features = ["async"], optional = true, package = "dht" }
 
 hex = "0.4"
 
