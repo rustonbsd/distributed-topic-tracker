@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
 
 use anyhow::{Context, Result};
 use ed25519_dalek::VerifyingKey;
@@ -37,7 +37,11 @@ impl Dht {
         Ok(())
     }
 
-    pub async fn get_peers(&mut self, topic_bytes: &Vec<u8>) -> Result<Vec<VerifyingKey>> {
+    pub async fn get_peers(
+        &mut self,
+        topic_bytes: &Vec<u8>,
+        timeout: Option<Duration>,
+    ) -> Result<HashSet<VerifyingKey>> {
         if self.dht.is_none() {
             self.reset().await?;
         }
@@ -45,22 +49,30 @@ impl Dht {
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
-        let mut stream = dht.get_signed_peers(id, Some(chrono::Utc::now().timestamp()-60)).await;
+        let mut stream = dht.get_signed_peers(id).await;
         let mut results = vec![];
 
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        while let Ok(Some(item)) = tokio::time::timeout_at(deadline, stream.next()).await {
-            results.push(item);
+        if let Some(timeout) = timeout {
+            let deadline = tokio::time::Instant::now() + timeout;
+            while let Ok(Some(item)) = tokio::time::timeout_at(deadline, stream.next()).await {
+                results.push(item);
+            }
+        } else {
+            results = stream.collect::<Vec<Vec<_>>>().await;
         }
 
         Ok(results
             .iter()
             .flatten()
             .filter_map(|item| VerifyingKey::from_bytes(item.key()).ok())
-            .collect::<Vec<_>>())
+            .collect::<HashSet<_>>())
     }
 
-    pub async fn announce_self(&mut self, topic_bytes: &Vec<u8>) -> Result<()> {
+    pub async fn announce_self(
+        &mut self,
+        topic_bytes: &Vec<u8>,
+        timeout: Option<Duration>,
+    ) -> Result<mainline_exp::Id> {
         if self.dht.is_none() {
             self.reset().await?;
         }
@@ -68,13 +80,18 @@ impl Dht {
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         let id = Id::from_bytes(topic_hash_20(topic_bytes))?;
 
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            dht.announce_signed_peer(id, &self.signing_key),
-        )
-        .await
-        .map(|_| ())
-        .map_err(|e| anyhow::anyhow!("Failed to announce signed peer: {e}"))
+        let announce_future = dht.announce_signed_peer(id, &self.signing_key);
+
+        if let Some(timeout) = timeout {
+            tokio::time::timeout(timeout, announce_future)
+                .await
+                .context("Announce timed out")?
+                .context("Failed to announce signed peer")
+        } else {
+            announce_future
+                .await
+                .context("Failed to announce signed peer")
+        }
     }
 }
 

@@ -17,7 +17,9 @@ services:
     environment:
       - RUST_LOG=info
       - TOPIC_ID=${TOPIC_ID}
-    command: sh -c "e2e_test_experimental 2 $${TOPIC_ID}"
+    command: sh -c "sleep 10 && e2e_test_experimental 2 $${TOPIC_ID}"
+    depends_on:
+      - node1
 
   node3:
     build: 
@@ -27,4 +29,6 @@ services:
     environment:
       - RUST_LOG=info
       - TOPIC_ID=${TOPIC_ID}
-    command: sh -c "e2e_test_experimental 2 $${TOPIC_ID}"
+    command: sh -c "sleep 20 && e2e_test_experimental 2 $${TOPIC_ID}"
+    depends_on:
+      - node2

@@ -7,8 +7,7 @@ set -e
 
 echo "Starting end-to-end test..."
 
-#export TOPIC_ID=$RANDOM
-export TOPIC_ID=NOTRANDOMSOWECANSEEIFTHE_MORE_RECENT_THAN_PARAM_IN_MAINLINE_FOR_GET_SIGNED_PEERS_WORKS
+export TOPIC_ID=$RANDOM
 
 # Clean up any existing containers
 docker compose --file $COMPOSE_FILE down --remove-orphans || true

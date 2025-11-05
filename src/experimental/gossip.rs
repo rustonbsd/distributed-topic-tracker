@@ -134,9 +134,9 @@ impl Topic {
                 let wait_dur = {
                     let mut lock = dht.lock().await;
 
-                    if let Err(e) = lock.announce_self(&topic_bytes).await {
+                    if let Err(e) = lock.announce_self(&topic_bytes, None).await {
                         tracing::warn!("self_announce: {e}");
-                        backoff += 1;
+                        backoff += 5;
                         Duration::from_secs(backoff.min(300))
                     } else {
                         tracing::info!("self_announce: success");
@@ -161,15 +161,17 @@ impl Topic {
             while is_running.load(std::sync::atomic::Ordering::Relaxed) {
                 let peers = {
                     let mut lock = dht.lock().await;
-                    let res = lock.get_peers(&topic_bytes).await;
+                    let res = lock.get_peers(&topic_bytes, None).await;
                     
                     if let Err(e) = res {
                         tracing::error!("bootstrap get_peers error: {e:?}");
-                        Vec::new()
+                        HashSet::new()
                     } else {
                         res.unwrap_or_default().clone()
                     }
                 };
+
+                println!("peer-hashes: {}", peers.iter().map(|p| hex::encode(p.as_bytes())).collect::<Vec<String>>().join(", "));
                 tracing::debug!("bootstrap found {} peers", peers.len());
                 if !peers.is_empty() {
                     let mut added_nodes_lock = added_nodes.lock().await;
@@ -202,7 +204,7 @@ impl Topic {
 
                 if !receiver.is_joined().await || added_nodes.lock().await.len() < 2 {
                     tracing::debug!("not enough peers yet, waiting before next bootstrap attempt");
-                    backoff += 1;
+                    backoff += 5;
                     tokio::time::sleep(Duration::from_secs(backoff.min(60))).await;
                 } else {
                     backoff = 5;
