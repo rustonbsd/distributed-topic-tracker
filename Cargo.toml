@@ -12,7 +12,7 @@ version = "0.2.4"
 edition = "2024"
 
 [features]
-default = ["iroh-gossip","experimental"]
+default = ["iroh-gossip"]
 iroh-gossip = ["dep:iroh", "dep:iroh-gossip"]
 experimental = ["dep:mainline_exp"]
 
