@@ -4,7 +4,7 @@ use iroh_gossip::{api::Event, net::Gossip};
 
 use ed25519_dalek::SigningKey;
 
-// Imports from distrubuted-topic-tracker
+// Imports from distributed-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 
 #[tokio::main]
