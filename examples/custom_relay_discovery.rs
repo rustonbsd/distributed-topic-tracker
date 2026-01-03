@@ -1,4 +1,5 @@
 use anyhow::Result;
+use ed25519_dalek::SigningKey;
 use iroh::{Endpoint, RelayMap, SecretKey, discovery::{dns::DnsDiscovery, pkarr::PkarrPublisher}};
 use iroh_gossip::net::Gossip;
 
@@ -9,20 +10,20 @@ use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 async fn main() -> Result<()> {
     // Generate a new random secret key
     let secret_key = SecretKey::generate(&mut rand::rng());
-    let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
+    let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
 
+    // Set up endpoint with custom discovery enabled
     let relay_map = iroh::RelayMap::empty();//iroh::defaults::prod::default_relay_map();
     relay_map.extend(&RelayMap::from(
         "https://iroh-relay.rustonbsd.com:8443/".parse::<iroh::RelayUrl>()?,
     ));
     let dns_discovery = DnsDiscovery::builder("https://iroh-dns.rustonbsd.com/".parse()?).build();
     let pkarr_publisher = PkarrPublisher::builder("https://iroh-relay.rustonbsd.com".parse()?).build(secret_key.clone());
-    
-    // Set up endpoint with discovery enabled
+
     let endpoint = Endpoint::builder()
         .relay_mode(iroh::RelayMode::Custom(relay_map))
-        .discovery(DnsDiscovery::n0_dns().build())
-        .discovery(PkarrPublisher::n0_dns().build(secret_key.clone()))
+        //.discovery(DnsDiscovery::n0_dns().build())
+        //.discovery(PkarrPublisher::n0_dns().build(secret_key.clone()))
         .discovery(dns_discovery)
         .discovery(pkarr_publisher)
         .secret_key(secret_key.clone())
@@ -40,6 +41,8 @@ async fn main() -> Result<()> {
     let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
 
+    // Split into sink (sending) and stream (receiving)
+
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
         signing_key.verifying_key(),
@@ -47,30 +50,16 @@ async fn main() -> Result<()> {
         None,
         initial_secret,
     );
-    let (gossip_sender, gossip_receiver) = gossip
+
+    let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
-        .await?
-        .split()
-        .await?;
-
-    tokio::spawn(async move {
-        while let Some(Ok(event)) = gossip_receiver.next().await {
-            println!("event: {event:?}");
-        }
-    });
-
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-    gossip_sender
-        .broadcast(format!("hi from {}", endpoint.id()).into())
         .await?;
 
     println!("[joined topic]");
 
-    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    // Do something with the gossip topic
+    // (bonus: GossipSender and GossipReceiver are safely clonable)
+    let (_gossip_sender, _gossip_receiver) = topic.split().await?;
 
-    println!("[finished]");
-
-    // successfully joined
-    // exit with code 0
     Ok(())
 }
