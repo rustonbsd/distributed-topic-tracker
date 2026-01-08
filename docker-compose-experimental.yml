@@ -1,0 +1,34 @@
+services:
+  node1:
+    build:
+      context: .
+      dockerfile: Dockerfile.experimental
+    container_name: dtt-node1
+    environment:
+      - RUST_LOG=info
+      - TOPIC_ID=${TOPIC_ID}
+    command: sh -c "e2e_test_experimental 2 $${TOPIC_ID}"
+
+  node2:
+    build:
+      context: .
+      dockerfile: Dockerfile.experimental
+    container_name: dtt-node2
+    environment:
+      - RUST_LOG=info
+      - TOPIC_ID=${TOPIC_ID}
+    command: sh -c "sleep 10 && e2e_test_experimental 2 $${TOPIC_ID}"
+    depends_on:
+      - node1
+
+  node3:
+    build: 
+      context: .
+      dockerfile: Dockerfile.experimental
+    container_name: dtt-node3
+    environment:
+      - RUST_LOG=info
+      - TOPIC_ID=${TOPIC_ID}
+    command: sh -c "sleep 20 && e2e_test_experimental 2 $${TOPIC_ID}"
+    depends_on:
+      - node2
