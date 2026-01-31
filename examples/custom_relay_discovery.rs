@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
-use iroh::{Endpoint, RelayMap, SecretKey, discovery::{dns::DnsDiscovery, pkarr::PkarrPublisher}};
+use iroh::{Endpoint, RelayMap, SecretKey, address_lookup::{dns::DnsAddressLookup, pkarr::PkarrPublisher}};
 use iroh_gossip::net::Gossip;
 
 // Imports from distrubuted-topic-tracker
@@ -17,15 +17,15 @@ async fn main() -> Result<()> {
     relay_map.extend(&RelayMap::from(
         "https://iroh-relay.rustonbsd.com:8443/".parse::<iroh::RelayUrl>()?,
     ));
-    let dns_discovery = DnsDiscovery::builder("https://iroh-dns.rustonbsd.com/".parse()?).build();
+    let dns_lookup = DnsAddressLookup::builder("https://iroh-dns.rustonbsd.com/".parse()?).build();
     let pkarr_publisher = PkarrPublisher::builder("https://iroh-relay.rustonbsd.com".parse()?).build(secret_key.clone());
 
     let endpoint = Endpoint::builder()
         .relay_mode(iroh::RelayMode::Custom(relay_map))
-        //.discovery(DnsDiscovery::n0_dns().build())
-        //.discovery(PkarrPublisher::n0_dns().build(secret_key.clone()))
-        .discovery(dns_discovery)
-        .discovery(pkarr_publisher)
+        //.address_lookup(DnsAddressLookup::n0_dns().build())
+        //.address_lookup(PkarrPublisher::n0_dns().build(secret_key.clone()))
+        .address_lookup(dns_lookup)
+        .address_lookup(pkarr_publisher)
         .secret_key(secret_key.clone())
         .bind()
         .await?;
