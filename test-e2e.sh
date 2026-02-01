@@ -7,12 +7,14 @@ set -e
 
 echo "Starting end-to-end test..."
 
+export TOPIC_ID=$RANDOM
+
 # Clean up any existing containers
-docker compose down --remove-orphans || true
+docker compose --file $COMPOSE_FILE down --remove-orphans || true
 
 # Build and start the containers
 echo "Building and starting containers..."
-docker compose up --build -d
+docker compose --file $COMPOSE_FILE up --build -d
 
 # Function to check if a container has printed "Joined topic"
 check_joined_topic() {
@@ -91,7 +93,7 @@ echo "========================================="
 
 # Clean up
 echo "Cleaning up containers..."
-docker compose down
+docker compose --file $COMPOSE_FILE down 
 
 if [ "$success" = true ]; then
     echo "End-to-end test PASSED: All nodes successfully joined the topic and completed execution"

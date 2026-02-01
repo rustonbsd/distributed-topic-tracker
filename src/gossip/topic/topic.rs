@@ -144,7 +144,7 @@ impl Topic {
     }
 
     /// Split into sender and receiver for message exchange.
-    pub async fn split(&self) -> Result<(GossipSender, crate::gossip::receiver::GossipReceiver)> {
+    pub async fn split(&self) -> Result<(GossipSender, crate::core::receiver::GossipReceiver)> {
         Ok((self.gossip_sender().await?, self.gossip_receiver().await?))
     }
 
@@ -156,7 +156,7 @@ impl Topic {
     }
 
     /// Get the gossip receiver for this topic.
-    pub async fn gossip_receiver(&self) -> Result<crate::gossip::receiver::GossipReceiver> {
+    pub async fn gossip_receiver(&self) -> Result<crate::core::receiver::GossipReceiver> {
         self.api
             .call(act!(actor => actor.bootstrap.gossip_receiver()))
             .await

@@ -2,6 +2,8 @@ use anyhow::Result;
 use iroh::{Endpoint, RelayMap, SecretKey, address_lookup::{dns::DnsAddressLookup, pkarr::PkarrPublisher}};
 use iroh_gossip::net::Gossip;
 
+use ed25519_dalek::SigningKey;
+
 // Imports from distrubuted-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 
@@ -9,7 +11,7 @@ use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 async fn main() -> Result<()> {
     // Generate a new random secret key
     let secret_key = SecretKey::generate(&mut rand::rng());
-    let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
+    let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
 
     let relay_map = iroh::RelayMap::empty();//iroh::defaults::prod::default_relay_map();
     relay_map.extend(&RelayMap::from(

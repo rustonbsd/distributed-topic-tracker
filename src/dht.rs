@@ -2,14 +2,14 @@
 //!
 //! Provides async interface for DHT get/put operations with automatic
 //! retry logic and connection management.
-
 use std::time::Duration;
 
 use actor_helper::{Action, Actor, Handle, Receiver, act};
 use anyhow::{Context, Result, bail};
 use ed25519_dalek::VerifyingKey;
 use futures_lite::StreamExt;
-use mainline::{MutableItem, SigningKey};
+
+use mainline::{Dht as MainlineDht, MutableItem, SigningKey, async_dht::AsyncDht};
 
 const RETRY_DEFAULT: usize = 3;
 
@@ -25,7 +25,7 @@ pub struct Dht {
 #[derive(Debug)]
 struct DhtActor {
     rx: Receiver<Action<Self>>,
-    dht: Option<mainline::async_dht::AsyncDht>,
+    dht: Option<AsyncDht>,
 }
 
 impl Dht {
@@ -186,7 +186,7 @@ impl DhtActor {
     }
 
     async fn reset(&mut self) -> Result<()> {
-        self.dht = Some(mainline::Dht::builder().build()?.as_async());
+        self.dht = Some(MainlineDht::builder().build()?.as_async());
         Ok(())
     }
 }

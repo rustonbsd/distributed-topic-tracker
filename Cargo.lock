@@ -683,6 +683,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "dht"
+version = "6.1.0"
+source = "git+https://github.com/Nuhvi/mainline?branch=main#95f192b48f875e9070452a32350b0312ad691954"
+dependencies = [
+ "crc",
+ "document-features",
+ "dyn-clone",
+ "ed25519-dalek",
+ "flume",
+ "futures-lite",
+ "getrandom 0.3.3",
+ "lru 0.13.0",
+ "serde",
+ "serde_bencode",
+ "serde_bytes",
+ "sha1_smol",
+ "thiserror 2.0.12",
+ "tracing",
+]
+
+[[package]]
 name = "diatomic-waker"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -739,9 +760,11 @@ dependencies = [
  "actor-helper",
  "anyhow",
  "chrono",
+ "dht",
  "ed25519-dalek",
  "ed25519-dalek-hpke",
  "futures-lite",
+ "hex",
  "iroh",
  "iroh-gossip",
  "mainline",

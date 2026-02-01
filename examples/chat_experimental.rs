@@ -1,13 +1,26 @@
 use anyhow::Result;
+use distributed_topic_tracker::AutoDiscoveryGossip;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::{api::Event, net::Gossip};
 
-// Imports from distrubuted-topic-tracker
-use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
 use ed25519_dalek::SigningKey;
+
+// Imports from distrubuted-topic-tracker
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // tracing init - only show distributed_topic_tracker logs
+    use tracing_subscriber::filter::EnvFilter;
+
+    tracing_subscriber::fmt()
+        .with_thread_ids(true)
+        .with_ansi(true)
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("distributed_topic_tracker=debug")),
+        )
+        .init();
+
     // Generate a new random secret key
     let secret_key = SecretKey::generate(&mut rand::rng());
     let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
@@ -26,21 +39,14 @@ async fn main() -> Result<()> {
         .accept(iroh_gossip::ALPN, gossip.clone())
         .spawn();
 
-    let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
-    let initial_secret = b"my-initial-secret".to_vec();
+    let topic_id = "my-iroh-gossip-topic-experimental".as_bytes().to_vec();
 
-    let record_publisher = RecordPublisher::new(
-        topic_id.clone(),
-        signing_key.verifying_key(),
-        signing_key.clone(),
-        None,
-        initial_secret,
-    );
+    // Split into sink (sending) and stream (receiving)
     let (gossip_sender, gossip_receiver) = gossip
-        .subscribe_and_join_with_auto_discovery_no_wait(record_publisher)
+        .subscribe_and_join_with_auto_discovery(topic_id, signing_key)
         .await?
         .split()
-        .await?;
+        .await;
 
     println!("Joined topic");
 
