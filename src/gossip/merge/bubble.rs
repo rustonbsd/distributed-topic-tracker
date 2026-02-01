@@ -122,12 +122,11 @@ impl BubbleMergeActor {
                     } else {
                         vec![]
                     };
-                    if let Ok(endpoint_id) = EndpointId::from_bytes(&record.node_id()) {
-                        if endpoint_id
+                    if let Ok(endpoint_id) = EndpointId::from_bytes(&record.node_id())
+                        && endpoint_id
                             != EndpointId::from_verifying_key(self.record_publisher.pub_key())
-                        {
-                            endpoint_ids.push(endpoint_id);
-                        }
+                    {
+                        endpoint_ids.push(endpoint_id);
                     }
                     endpoint_ids
                 })
