@@ -144,12 +144,8 @@ impl Actor<anyhow::Error> for GossipReceiverActor {
                         }
                     }
                 }
-                _ = tokio::signal::ctrl_c() => {
-                    break;
-                }
             }
         }
-        Ok(())
     }
 }
 
