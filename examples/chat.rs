@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
     let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
 
     // Set up endpoint with discovery enabled
-    let endpoint = Endpoint::builder()
+    let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
         .secret_key(secret_key.clone())
         .bind()
         .await?;

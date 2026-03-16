@@ -94,12 +94,8 @@ impl Actor<anyhow::Error> for BootstrapActor {
                 Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
-                _ = tokio::signal::ctrl_c() => {
-                    break;
-                }
             }
         }
-        Ok(())
     }
 }
 

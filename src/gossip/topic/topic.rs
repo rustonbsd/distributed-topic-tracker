@@ -177,12 +177,8 @@ impl Actor<anyhow::Error> for TopicActor {
                 Ok(action) = self.rx.recv_async() => {
                     let _ = action(self).await;
                 }
-                _ = tokio::signal::ctrl_c() => {
-                    break;
-                }
             }
         }
-        Ok(())
     }
 }
 

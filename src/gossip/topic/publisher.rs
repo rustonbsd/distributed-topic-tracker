@@ -63,10 +63,8 @@ impl Actor<anyhow::Error> for PublisherActor {
                     tracing::debug!("Publisher: next publish in {}s", next_interval);
                     self.ticker.reset_after(Duration::from_secs(next_interval));
                 }
-                _ = tokio::signal::ctrl_c() => break,
             }
         }
-        Ok(())
     }
 }
 
