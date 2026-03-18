@@ -67,6 +67,7 @@ impl Actor<anyhow::Error> for MessageOverlapMergeActor {
                     tracing::debug!("MessageOverlapMerge: next check in {}s", next_interval);
                     self.ticker.reset_after(Duration::from_secs(next_interval));
                 }
+                else => break Ok(()),
             }
         }
     }

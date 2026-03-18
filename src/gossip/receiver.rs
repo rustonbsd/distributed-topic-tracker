@@ -144,6 +144,7 @@ impl Actor<anyhow::Error> for GossipReceiverActor {
                         }
                     }
                 }
+                else => break Ok(()),
             }
         }
     }
