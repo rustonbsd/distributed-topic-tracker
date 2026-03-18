@@ -1,7 +1,6 @@
 use anyhow::Result;
 use iroh::{
-    Endpoint, RelayMap, SecretKey,
-    address_lookup::{dns::DnsAddressLookup, pkarr::PkarrPublisher},
+    Endpoint, SecretKey,
 };
 use iroh_gossip::net::Gossip;
 
@@ -14,20 +13,8 @@ async fn main() -> Result<()> {
     let secret_key = SecretKey::generate(&mut rand::rng());
     let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
 
-    let relay_map = iroh::RelayMap::empty(); //iroh::defaults::prod::default_relay_map();
-    relay_map.extend(&RelayMap::from(
-        "https://iroh-relay.rustonbsd.com:8443/".parse::<iroh::RelayUrl>()?,
-    ));
-    let dns_lookup = DnsAddressLookup::builder("https://iroh-dns.rustonbsd.com/".parse()?).build();
-    let pkarr_publisher = PkarrPublisher::builder("https://iroh-relay.rustonbsd.com".parse()?);
-
     // Set up endpoint with address lookup enabled
     let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
-        .relay_mode(iroh::RelayMode::Custom(relay_map))
-        .address_lookup(DnsAddressLookup::n0_dns().build())
-        .address_lookup(PkarrPublisher::n0_dns())
-        .address_lookup(dns_lookup)
-        .address_lookup(pkarr_publisher)
         .secret_key(secret_key.clone())
         .bind()
         .await?;
