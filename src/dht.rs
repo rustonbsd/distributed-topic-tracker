@@ -99,6 +99,7 @@ impl Actor<anyhow::Error> for DhtActor {
                 Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
+                else => break Ok(()),
             }
         }
     }

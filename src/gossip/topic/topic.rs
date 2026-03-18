@@ -177,6 +177,7 @@ impl Actor<anyhow::Error> for TopicActor {
                 Ok(action) = self.rx.recv_async() => {
                     let _ = action(self).await;
                 }
+                else => break Ok(()),
             }
         }
     }

@@ -104,6 +104,7 @@ impl Actor<anyhow::Error> for GossipSenderActor {
                 Ok(action) = self.rx.recv_async() => {
                     action(self).await;
                 }
+                else => break Ok(()),
             }
         }
     }
