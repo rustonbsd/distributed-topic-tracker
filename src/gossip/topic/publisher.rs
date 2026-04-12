@@ -1,6 +1,6 @@
 //! Background publisher that updates DHT records with active peer info.
 
-use actor_helper::{Action, Actor, Handle, Receiver};
+use actor_helper::{Action, Handle, Receiver};
 use std::time::Duration;
 
 use crate::{GossipReceiver, RecordPublisher};
@@ -18,8 +18,6 @@ pub struct Publisher {
 
 #[derive(Debug)]
 struct PublisherActor {
-    rx: Receiver<Action<PublisherActor>>,
-
     record_publisher: RecordPublisher,
     gossip_receiver: GossipReceiver,
     ticker: tokio::time::Interval,
@@ -30,30 +28,28 @@ impl Publisher {
     ///
     /// Spawns a background task that periodically publishes records.
     pub fn new(record_publisher: RecordPublisher, gossip_receiver: GossipReceiver) -> Result<Self> {
-        let (api, rx) = Handle::channel();
-
-        tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_secs(10));
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            let mut actor = PublisherActor {
-                rx,
+        let mut ticker = tokio::time::interval(Duration::from_secs(10));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let api = Handle::spawn_with(
+            PublisherActor {
                 record_publisher,
                 gossip_receiver,
                 ticker,
-            };
-            let _ = actor.run().await;
-        });
+            },
+            |mut actor, rx| async move { actor.run(rx).await },
+        )
+        .0;
 
         Ok(Self { _api: api })
     }
 }
 
-impl Actor<anyhow::Error> for PublisherActor {
-    async fn run(&mut self) -> Result<()> {
+impl PublisherActor {
+    async fn run(&mut self, rx: Receiver<Action<PublisherActor>>) -> Result<()> {
         tracing::debug!("Publisher: starting publisher actor");
         loop {
             tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
+                Ok(action) = rx.recv_async() => {
                     action(self).await;
                 }
                 _ = self.ticker.tick() => {

@@ -8,7 +8,7 @@ use crate::{
         topic::{bootstrap::Bootstrap, publisher::Publisher},
     },
 };
-use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
+use actor_helper::{Handle, act, act_ok};
 use anyhow::Result;
 use sha2::Digest;
 
@@ -72,7 +72,6 @@ pub struct Topic {
 
 #[derive(Debug)]
 struct TopicActor {
-    rx: Receiver<Action<Self>>,
     bootstrap: Bootstrap,
     publisher: Option<Publisher>,
     bubble_merge: Option<BubbleMerge>,
@@ -98,26 +97,17 @@ impl Topic {
             async_bootstrap
         );
 
-        let (api, rx) = Handle::channel();
-
         let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone()).await?;
         tracing::debug!("Topic: bootstrap instance created");
 
-        tokio::spawn({
-            let bootstrap = bootstrap.clone();
-            async move {
-                tracing::debug!("Topic: starting topic actor");
-                let mut actor = TopicActor {
-                    rx,
-                    bootstrap: bootstrap.clone(),
-                    record_publisher,
-                    publisher: None,
-                    bubble_merge: None,
-                    message_overlap_merge: None,
-                };
-                let _ = actor.run().await;
-            }
-        });
+        let api = Handle::spawn(TopicActor {
+            bootstrap: bootstrap.clone(),
+            record_publisher,
+            publisher: None,
+            bubble_merge: None,
+            message_overlap_merge: None,
+        })
+        .0;
 
         let bootstrap_done = bootstrap.bootstrap().await?;
         if !async_bootstrap {
@@ -167,19 +157,6 @@ impl Topic {
         self.api
             .call(act_ok!(actor => async move { actor.record_publisher.clone() }))
             .await
-    }
-}
-
-impl Actor<anyhow::Error> for TopicActor {
-    async fn run(&mut self) -> Result<()> {
-        loop {
-            tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
-                    let _ = action(self).await;
-                }
-                else => break Ok(()),
-            }
-        }
     }
 }
 

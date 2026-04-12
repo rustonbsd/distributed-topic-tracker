@@ -2,7 +2,7 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
+use actor_helper::{Action, Handle, Receiver, act, act_ok};
 use anyhow::Result;
 use futures_lite::StreamExt;
 use iroh::EndpointId;
@@ -20,7 +20,6 @@ pub struct GossipReceiver {
 
 #[derive(Debug)]
 pub struct GossipReceiverActor {
-    rx: Receiver<Action<GossipReceiverActor>>,
     gossip_receiver: iroh_gossip::api::GossipReceiver,
     last_message_hashes: Vec<[u8; 32]>,
     msg_queue: VecDeque<Option<Result<iroh_gossip::api::Event, iroh_gossip::api::ApiError>>>,
@@ -38,21 +37,17 @@ impl GossipReceiver {
         gossip_receiver: iroh_gossip::api::GossipReceiver,
         gossip: iroh_gossip::net::Gossip,
     ) -> Self {
-        let (api, rx) = Handle::channel();
-        tokio::spawn({
-            let gossip = gossip.clone();
-            async move {
-                let mut actor = GossipReceiverActor {
-                    rx,
-                    gossip_receiver,
-                    last_message_hashes: Vec::new(),
-                    msg_queue: VecDeque::new(),
-                    waiters: VecDeque::new(),
-                    _gossip: gossip.clone(),
-                };
-                let _ = actor.run().await;
-            }
-        });
+        let api = Handle::spawn_with(
+            GossipReceiverActor {
+                gossip_receiver,
+                last_message_hashes: Vec::new(),
+                msg_queue: VecDeque::new(),
+                waiters: VecDeque::new(),
+                _gossip: gossip.clone(),
+            },
+            |mut actor, rx| async move { actor.run(rx).await },
+        )
+        .0;
 
         Self {
             api,
@@ -103,12 +98,12 @@ impl GossipReceiver {
     }
 }
 
-impl Actor<anyhow::Error> for GossipReceiverActor {
-    async fn run(&mut self) -> Result<()> {
+impl GossipReceiverActor {
+    async fn run(&mut self, rx: Receiver<Action<GossipReceiverActor>>) -> Result<()> {
         tracing::debug!("GossipReceiver: starting gossip receiver actor");
         loop {
             tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
+                Ok(action) = rx.recv_async() => {
                     action(self).await;
                 }
                 raw_event = self.gossip_receiver.next() => {

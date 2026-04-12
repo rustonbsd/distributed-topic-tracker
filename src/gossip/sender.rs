@@ -1,6 +1,6 @@
 //! Actor-based wrapper for iroh-gossip broadcast operations.
 
-use actor_helper::{Action, Actor, Handle, Receiver, act};
+use actor_helper::{Handle, act};
 use anyhow::Result;
 use iroh::EndpointId;
 use rand::seq::SliceRandom;
@@ -17,7 +17,6 @@ pub struct GossipSender {
 
 #[derive(Debug)]
 pub struct GossipSenderActor {
-    rx: Receiver<Action<GossipSenderActor>>,
     gossip_sender: iroh_gossip::api::GossipSender,
     _gossip: iroh_gossip::net::Gossip,
 }
@@ -28,18 +27,11 @@ impl GossipSender {
         gossip_sender: iroh_gossip::api::GossipSender,
         gossip: iroh_gossip::net::Gossip,
     ) -> Self {
-        let (api, rx) = Handle::channel();
-        tokio::spawn({
-            let gossip = gossip.clone();
-            async move {
-                let mut actor = GossipSenderActor {
-                    rx,
-                    gossip_sender,
-                    _gossip: gossip.clone(),
-                };
-                let _ = actor.run().await;
-            }
-        });
+        let api = Handle::spawn(GossipSenderActor {
+            gossip_sender,
+            _gossip: gossip.clone(),
+        })
+        .0;
 
         Self {
             api,
@@ -94,18 +86,5 @@ impl GossipSender {
                 .map_err(|e| anyhow::anyhow!(e))
             }))
             .await
-    }
-}
-
-impl Actor<anyhow::Error> for GossipSenderActor {
-    async fn run(&mut self) -> Result<()> {
-        loop {
-            tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
-                    action(self).await;
-                }
-                else => break Ok(()),
-            }
-        }
     }
 }
