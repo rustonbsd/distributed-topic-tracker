@@ -2,7 +2,7 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use actor_helper::{Action, Actor, Handle, Receiver, act, act_ok};
+use actor_helper::{Action, Handle, Receiver, act, act_ok};
 use anyhow::Result;
 use iroh::EndpointId;
 use tokio::time::sleep;
@@ -24,8 +24,6 @@ pub struct Bootstrap {
 
 #[derive(Debug)]
 struct BootstrapActor {
-    rx: Receiver<Action<Self>>,
-
     record_publisher: crate::crypto::RecordPublisher,
 
     gossip_sender: GossipSender,
@@ -50,17 +48,15 @@ impl Bootstrap {
             GossipReceiver::new(gossip_receiver, gossip.clone()),
         );
 
-        let (api, rx) = Handle::channel();
-
-        tokio::spawn(async move {
-            let mut actor = BootstrapActor {
-                rx,
+        let api = Handle::spawn_with(
+            BootstrapActor {
                 record_publisher,
                 gossip_sender,
                 gossip_receiver,
-            };
-            let _ = actor.run().await;
-        });
+            },
+            |mut actor, rx| async move { actor.run(rx).await },
+        )
+        .0;
 
         Ok(Self { api })
     }
@@ -87,11 +83,11 @@ impl Bootstrap {
     }
 }
 
-impl Actor<anyhow::Error> for BootstrapActor {
-    async fn run(&mut self) -> Result<()> {
+impl BootstrapActor {
+    async fn run(&mut self, rx: Receiver<Action<BootstrapActor>>) -> Result<()> {
         loop {
             tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
+                Ok(action) = rx.recv_async() => {
                     action(self).await;
                 }
                 else => break Ok(()),

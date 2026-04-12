@@ -2,7 +2,7 @@
 //!
 //! If local peer count < 4, extract suggested peers from DHT records and join them.
 
-use actor_helper::{Action, Actor, Handle, Receiver};
+use actor_helper::Handle;
 use iroh::EndpointId;
 use std::{collections::HashSet, time::Duration};
 
@@ -20,8 +20,6 @@ pub struct BubbleMerge {
 
 #[derive(Debug)]
 struct BubbleMergeActor {
-    rx: Receiver<Action<BubbleMergeActor>>,
-
     record_publisher: RecordPublisher,
     gossip_receiver: GossipReceiver,
     gossip_sender: GossipSender,
@@ -37,32 +35,33 @@ impl BubbleMerge {
         gossip_sender: GossipSender,
         gossip_receiver: GossipReceiver,
     ) -> Result<Self> {
-        let (api, rx) = Handle::channel();
-
         let mut ticker = tokio::time::interval(Duration::from_secs(10));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-        tokio::spawn(async move {
-            let mut actor = BubbleMergeActor {
-                rx,
+        let api = Handle::spawn_with(
+            BubbleMergeActor {
                 record_publisher,
                 gossip_receiver,
                 gossip_sender,
                 ticker,
-            };
-            let _ = actor.run().await;
-        });
+            },
+            |mut actor, rx| async move { actor.run(rx).await },
+        )
+        .0;
 
         Ok(Self { _api: api })
     }
 }
 
-impl Actor<anyhow::Error> for BubbleMergeActor {
-    async fn run(&mut self) -> Result<()> {
+impl BubbleMergeActor {
+    async fn run(
+        &mut self,
+        rx: actor_helper::Receiver<actor_helper::Action<BubbleMergeActor>>,
+    ) -> Result<()> {
         tracing::debug!("BubbleMerge: starting bubble merge actor");
         loop {
             tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
+                Ok(action) = rx.recv_async() => {
                     action(self).await;
                 }
                 _ = self.ticker.tick() => {

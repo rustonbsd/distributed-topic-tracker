@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use actor_helper::{Action, Actor, Handle, Receiver, act};
+use actor_helper::{Handle, act};
 use anyhow::{Context, Result, bail};
 use ed25519_dalek::VerifyingKey;
 use futures_lite::StreamExt;
@@ -22,9 +22,8 @@ pub struct Dht {
     api: Handle<DhtActor, anyhow::Error>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct DhtActor {
-    rx: Receiver<Action<Self>>,
     dht: Option<mainline::async_dht::AsyncDht>,
 }
 
@@ -33,14 +32,9 @@ impl Dht {
     ///
     /// Spawns a background actor for handling DHT operations.
     pub fn new() -> Self {
-        let (api, rx) = Handle::channel();
-
-        tokio::spawn(async move {
-            let mut actor = DhtActor { rx, dht: None };
-            let _ = actor.run().await;
-        });
-
-        Self { api }
+        Self {
+            api: Handle::spawn(DhtActor::default()).0,
+        }
     }
 
     /// Retrieve mutable records from the DHT.
@@ -89,19 +83,6 @@ impl Dht {
 impl Default for Dht {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Actor<anyhow::Error> for DhtActor {
-    async fn run(&mut self) -> Result<()> {
-        loop {
-            tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
-                    action(self).await;
-                }
-                else => break Ok(()),
-            }
-        }
     }
 }
 

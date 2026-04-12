@@ -1,6 +1,6 @@
 //! Split-brain detection via message hash overlap in DHT records.
 
-use actor_helper::{Action, Actor, Handle, Receiver};
+use actor_helper::{Action, Handle, Receiver};
 use iroh::EndpointId;
 use std::{collections::HashSet, time::Duration};
 
@@ -17,8 +17,6 @@ pub struct MessageOverlapMerge {
 
 #[derive(Debug)]
 struct MessageOverlapMergeActor {
-    rx: Receiver<Action<MessageOverlapMergeActor>>,
-
     record_publisher: RecordPublisher,
     gossip_receiver: GossipReceiver,
     gossip_sender: GossipSender,
@@ -32,32 +30,29 @@ impl MessageOverlapMerge {
         gossip_sender: GossipSender,
         gossip_receiver: GossipReceiver,
     ) -> Result<Self> {
-        let (api, rx) = Handle::channel();
-
         let mut ticker = tokio::time::interval(Duration::from_secs(10));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-        tokio::spawn(async move {
-            let mut actor = MessageOverlapMergeActor {
-                rx,
+        let api = Handle::spawn_with(
+            MessageOverlapMergeActor {
                 record_publisher,
                 gossip_receiver,
                 gossip_sender,
                 ticker,
-            };
-            let _ = actor.run().await;
-        });
-
+            },
+            |mut actor, rx| async move { actor.run(rx).await },
+        )
+        .0;
         Ok(Self { _api: api })
     }
 }
 
-impl Actor<anyhow::Error> for MessageOverlapMergeActor {
-    async fn run(&mut self) -> Result<()> {
+impl MessageOverlapMergeActor {
+    async fn run(&mut self, rx: Receiver<Action<MessageOverlapMergeActor>>) -> Result<()> {
         tracing::debug!("MessageOverlapMerge: starting message overlap merge actor");
         loop {
             tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
+                Ok(action) = rx.recv_async() => {
                     action(self).await;
                 }
                 _ = self.ticker.tick() => {
