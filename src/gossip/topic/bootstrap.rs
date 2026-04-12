@@ -2,7 +2,7 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use actor_helper::{Action, Handle, Receiver, act, act_ok};
+use actor_helper::{Handle, act, act_ok};
 use anyhow::Result;
 use iroh::EndpointId;
 use tokio::time::sleep;
@@ -48,14 +48,11 @@ impl Bootstrap {
             GossipReceiver::new(gossip_receiver, gossip.clone()),
         );
 
-        let api = Handle::spawn_with(
-            BootstrapActor {
-                record_publisher,
-                gossip_sender,
-                gossip_receiver,
-            },
-            |mut actor, rx| async move { actor.run(rx).await },
-        )
+        let api = Handle::spawn(BootstrapActor {
+            record_publisher,
+            gossip_sender,
+            gossip_receiver,
+        })
         .0;
 
         Ok(Self { api })
@@ -80,19 +77,6 @@ impl Bootstrap {
         self.api
             .call(act_ok!(actor => async move { actor.gossip_receiver.clone() }))
             .await
-    }
-}
-
-impl BootstrapActor {
-    async fn run(&mut self, rx: Receiver<Action<BootstrapActor>>) -> Result<()> {
-        loop {
-            tokio::select! {
-                Ok(action) = rx.recv_async() => {
-                    action(self).await;
-                }
-                else => break Ok(()),
-            }
-        }
     }
 }
 

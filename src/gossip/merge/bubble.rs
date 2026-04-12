@@ -2,7 +2,7 @@
 //!
 //! If local peer count < 4, extract suggested peers from DHT records and join them.
 
-use actor_helper::Handle;
+use actor_helper::{Action, Handle, Receiver};
 use iroh::EndpointId;
 use std::{collections::HashSet, time::Duration};
 
@@ -56,7 +56,7 @@ impl BubbleMerge {
 impl BubbleMergeActor {
     async fn run(
         &mut self,
-        rx: actor_helper::Receiver<actor_helper::Action<BubbleMergeActor>>,
+        rx: Receiver<Action<BubbleMergeActor>>,
     ) -> Result<()> {
         tracing::debug!("BubbleMerge: starting bubble merge actor");
         loop {
