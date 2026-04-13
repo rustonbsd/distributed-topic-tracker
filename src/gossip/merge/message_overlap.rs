@@ -21,6 +21,7 @@ struct MessageOverlapMergeActor {
     gossip_receiver: GossipReceiver,
     gossip_sender: GossipSender,
     ticker: tokio::time::Interval,
+    cancel_token: tokio_util::sync::CancellationToken,
 }
 
 impl MessageOverlapMerge {
@@ -29,6 +30,7 @@ impl MessageOverlapMerge {
         record_publisher: RecordPublisher,
         gossip_sender: GossipSender,
         gossip_receiver: GossipReceiver,
+        cancel_token: tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
         let mut ticker = tokio::time::interval(Duration::from_secs(10));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -39,6 +41,7 @@ impl MessageOverlapMerge {
                 gossip_receiver,
                 gossip_sender,
                 ticker,
+                cancel_token
             },
             |mut actor, rx| async move { actor.run(rx).await },
         )
@@ -61,6 +64,9 @@ impl MessageOverlapMergeActor {
                     let next_interval = rand::random::<u64>() % 50;
                     tracing::debug!("MessageOverlapMerge: next check in {}s", next_interval);
                     self.ticker.reset_after(Duration::from_secs(next_interval));
+                }
+                _ = self.cancel_token.cancelled() => {
+                    break Ok(());
                 }
                 else => break Ok(()),
             }

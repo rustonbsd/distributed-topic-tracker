@@ -25,9 +25,9 @@ pub struct Bootstrap {
 #[derive(Debug)]
 struct BootstrapActor {
     record_publisher: crate::crypto::RecordPublisher,
-
     gossip_sender: GossipSender,
     gossip_receiver: GossipReceiver,
+    cancel_token: tokio_util::sync::CancellationToken,
 }
 
 impl Bootstrap {
@@ -35,6 +35,7 @@ impl Bootstrap {
     pub async fn new(
         record_publisher: crate::crypto::RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
+        cancel_token: tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
         let gossip_topic: iroh_gossip::api::GossipTopic = gossip
             .subscribe(
@@ -44,14 +45,15 @@ impl Bootstrap {
             .await?;
         let (gossip_sender, gossip_receiver) = gossip_topic.split();
         let (gossip_sender, gossip_receiver) = (
-            GossipSender::new(gossip_sender, gossip.clone()),
-            GossipReceiver::new(gossip_receiver, gossip.clone()),
+            GossipSender::new(gossip_sender),
+            GossipReceiver::new(gossip_receiver, cancel_token.clone()),
         );
 
         let api = Handle::spawn(BootstrapActor {
             record_publisher,
             gossip_sender,
             gossip_receiver,
+            cancel_token,
         })
         .0;
 
@@ -88,9 +90,10 @@ impl BootstrapActor {
             let (gossip_sender, gossip_receiver) =
                 (self.gossip_sender.clone(), self.gossip_receiver.clone());
             let record_publisher = self.record_publisher.clone();
+            let cancel_token = self.cancel_token.clone();
             async move {
                 tracing::debug!("Bootstrap: starting bootstrap process");
-                loop {
+                while !cancel_token.is_cancelled() {
                     // Check if we are connected to at least one node
                     if gossip_receiver.is_joined().await {
                         tracing::debug!("Bootstrap: already joined, exiting bootstrap loop");
@@ -140,7 +143,10 @@ impl BootstrapActor {
                                 });
                             }
                         }
-                        sleep(Duration::from_millis(100)).await;
+                        tokio::select! {
+                            _ = sleep(Duration::from_millis(100)) => {}
+                            _ = cancel_token.cancelled() => break,
+                        }
                         continue;
                     }
 
@@ -182,7 +188,11 @@ impl BootstrapActor {
                         match gossip_sender.join_peers(vec![*node_id], None).await {
                             Ok(_) => {
                                 tracing::debug!("Bootstrap: attempted to join peer {}", node_id);
-                                sleep(Duration::from_millis(100)).await;
+                                
+                                tokio::select! {
+                                    _ = sleep(Duration::from_millis(100)) => {}
+                                    _ = cancel_token.cancelled() => break,
+                                }
                                 if gossip_receiver.is_joined().await {
                                     tracing::debug!(
                                         "Bootstrap: successfully joined via peer {}",
@@ -208,7 +218,10 @@ impl BootstrapActor {
                         tracing::debug!(
                             "Bootstrap: not joined yet, waiting 500ms before final check"
                         );
-                        sleep(Duration::from_millis(500)).await;
+                        tokio::select! {
+                            _ = sleep(Duration::from_millis(500)) => {}
+                            _ = cancel_token.cancelled() => break,
+                        }
                     }
 
                     // If we are connected: return
@@ -240,7 +253,10 @@ impl BootstrapActor {
                                 });
                             }
                         }
-                        sleep(Duration::from_millis(100)).await;
+                        tokio::select! {
+                            _ = sleep(Duration::from_millis(100)) => {}
+                            _ = cancel_token.cancelled() => break,
+                        }
                         continue;
                     }
                 }
