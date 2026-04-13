@@ -216,6 +216,7 @@ impl TopicActor {
     }
 }
 
+#[cfg(test)]
 mod tests {
     #[tokio::test]
     async fn test_topic_full_shutdown_on_drop() {
