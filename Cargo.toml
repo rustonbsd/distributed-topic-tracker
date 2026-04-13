@@ -24,6 +24,7 @@ ed25519-dalek = { version = "3.0.0-pre.1", default-features = false, features = 
 ed25519-dalek-hpke = { version = "0.0.5" }
 
 tokio = { version = "1", default-features = false, features = ["macros", "time", "sync", "rt-multi-thread"] }
+tokio-util = { version = "0.7", default-features = false }
 
 iroh = { version = "0.97", optional = true, default-features = false }
 iroh-gossip = { version = "0.97", optional = true, default-features = false, features = ["net"]}

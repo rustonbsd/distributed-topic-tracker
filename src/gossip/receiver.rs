@@ -15,35 +15,34 @@ use sha2::Digest;
 #[derive(Debug, Clone)]
 pub struct GossipReceiver {
     api: Handle<GossipReceiverActor, anyhow::Error>,
-    _gossip: iroh_gossip::net::Gossip,
 }
 
 #[derive(Debug)]
 pub struct GossipReceiverActor {
     gossip_receiver: iroh_gossip::api::GossipReceiver,
-    last_message_hashes: Vec<[u8; 32]>,
+    last_message_hashes: VecDeque<[u8; 32]>,
     msg_queue: VecDeque<Option<Result<iroh_gossip::api::Event, iroh_gossip::api::ApiError>>>,
     waiters: VecDeque<
         tokio::sync::oneshot::Sender<
             Option<Result<iroh_gossip::api::Event, iroh_gossip::api::ApiError>>,
         >,
     >,
-    _gossip: iroh_gossip::net::Gossip,
+    cancel_token: tokio_util::sync::CancellationToken,
 }
 
 impl GossipReceiver {
     /// Create a new gossip receiver from an iroh topic receiver.
     pub fn new(
         gossip_receiver: iroh_gossip::api::GossipReceiver,
-        gossip: iroh_gossip::net::Gossip,
+        cancel_token: tokio_util::sync::CancellationToken,
     ) -> Self {
         let api = Handle::spawn_with(
             GossipReceiverActor {
                 gossip_receiver,
-                last_message_hashes: Vec::new(),
+                last_message_hashes: VecDeque::with_capacity(5),
                 msg_queue: VecDeque::new(),
                 waiters: VecDeque::new(),
-                _gossip: gossip.clone(),
+                cancel_token,
             },
             |mut actor, rx| async move { actor.run(rx).await },
         )
@@ -51,7 +50,6 @@ impl GossipReceiver {
 
         Self {
             api,
-            _gossip: gossip.clone(),
         }
     }
 
@@ -90,7 +88,7 @@ impl GossipReceiver {
     /// Get SHA512 hashes (first 32 bytes) of recently received messages.
     ///
     /// Used for detecting message overlap during network partition recovery.
-    pub async fn last_message_hashes(&self) -> Vec<[u8; 32]> {
+    pub async fn last_message_hashes(&self) -> VecDeque<[u8; 32]> {
         self.api
             .call(act_ok!(actor => async move { actor.last_message_hashes.clone() }))
             .await
@@ -107,6 +105,26 @@ impl GossipReceiverActor {
                     action(self).await;
                 }
                 raw_event = self.gossip_receiver.next() => {
+                    match raw_event {
+                        None => {
+                            // if none => receiver closed
+                            while let Some(waiter) = self.waiters.pop_back() {
+                                let _ = waiter.send(None);
+                            }
+                            break Ok(());
+                        }
+                        Some(Err(_)) => {
+                            // if Err => stream error, treat as closed
+                            if let Some(waiter) = self.waiters.pop_back() {
+                                let _ = waiter.send(raw_event);
+                            }
+                            while let Some(waiter) = self.waiters.pop_back() {
+                                let _ = waiter.send(None);
+                            }
+                            break Ok(());
+                        }
+                        Some(Ok(_)) => {}
+                    };
                     self.msg_queue.push_front(raw_event);
 
                     if let Some(waiter) = self.waiters.pop_back() {
@@ -124,7 +142,10 @@ impl GossipReceiverActor {
                                 let mut hash = sha2::Sha512::new();
                                 hash.update(msg.content.clone());
                                 if let Ok(lmh) = hash.finalize()[..32].try_into() {
-                                    self.last_message_hashes.push(lmh);
+                                    if self.last_message_hashes.len() == 5 {
+                                        self.last_message_hashes.pop_front();
+                                    }
+                                    self.last_message_hashes.push_back(lmh);
                                 }
                             }
                             iroh_gossip::api::Event::NeighborUp(node_id) => {
@@ -138,6 +159,12 @@ impl GossipReceiverActor {
                             }
                         }
                     }
+                }
+                _ = self.cancel_token.cancelled() => {
+                    while let Some(waiter) = self.waiters.pop_back() {
+                        let _ = waiter.send(None);
+                    }
+                    break Ok(());
                 }
                 else => break Ok(()),
             }

@@ -12,30 +12,25 @@ use rand::seq::SliceRandom;
 #[derive(Debug, Clone)]
 pub struct GossipSender {
     api: Handle<GossipSenderActor, anyhow::Error>,
-    _gossip: iroh_gossip::net::Gossip,
 }
 
 #[derive(Debug)]
 pub struct GossipSenderActor {
     gossip_sender: iroh_gossip::api::GossipSender,
-    _gossip: iroh_gossip::net::Gossip,
 }
 
 impl GossipSender {
     /// Create a new gossip sender from an iroh topic sender.
     pub fn new(
         gossip_sender: iroh_gossip::api::GossipSender,
-        gossip: iroh_gossip::net::Gossip,
     ) -> Self {
         let api = Handle::spawn(GossipSenderActor {
             gossip_sender,
-            _gossip: gossip.clone(),
         })
         .0;
 
         Self {
             api,
-            _gossip: gossip,
         }
     }
 

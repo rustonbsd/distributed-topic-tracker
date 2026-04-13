@@ -11,6 +11,7 @@ use crate::{
 use actor_helper::{Handle, act, act_ok};
 use anyhow::Result;
 use sha2::Digest;
+use tokio_util::sync::CancellationToken;
 
 /// Topic identifier derived from a string via SHA512 hashing.
 ///
@@ -68,6 +69,7 @@ impl TopicId {
 #[derive(Debug, Clone)]
 pub struct Topic {
     api: Handle<TopicActor, anyhow::Error>,
+    cancel_token: CancellationToken,
 }
 
 #[derive(Debug)]
@@ -77,6 +79,13 @@ struct TopicActor {
     bubble_merge: Option<BubbleMerge>,
     message_overlap_merge: Option<MessageOverlapMerge>,
     record_publisher: crate::crypto::RecordPublisher,
+    cancel_token: CancellationToken,
+}
+
+impl Drop for TopicActor {
+    fn drop(&mut self) {
+        self.cancel_token.cancel();
+    }
 }
 
 impl Topic {
@@ -97,7 +106,8 @@ impl Topic {
             async_bootstrap
         );
 
-        let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone()).await?;
+        let cancel_token = CancellationToken::new();
+        let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone(), cancel_token.clone()).await?;
         tracing::debug!("Topic: bootstrap instance created");
 
         let api = Handle::spawn(TopicActor {
@@ -106,6 +116,7 @@ impl Topic {
             publisher: None,
             bubble_merge: None,
             message_overlap_merge: None,
+            cancel_token: cancel_token.clone(),
         })
         .0;
 
@@ -130,7 +141,7 @@ impl Topic {
             .await;
 
         tracing::debug!("Topic: fully initialized");
-        Ok(Self { api })
+        Ok(Self { api, cancel_token })
     }
 
     /// Split into sender and receiver for message exchange.
@@ -158,6 +169,11 @@ impl Topic {
             .call(act_ok!(actor => async move { actor.record_publisher.clone() }))
             .await
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn cancel_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
+    }
 }
 
 impl TopicActor {
@@ -166,6 +182,7 @@ impl TopicActor {
         let publisher = Publisher::new(
             self.record_publisher.clone(),
             self.bootstrap.gossip_receiver().await?,
+            self.cancel_token.clone(),
         )?;
         self.publisher = Some(publisher);
         tracing::debug!("TopicActor: publisher started");
@@ -178,6 +195,7 @@ impl TopicActor {
             self.record_publisher.clone(),
             self.bootstrap.gossip_sender().await?,
             self.bootstrap.gossip_receiver().await?,
+            self.cancel_token.clone(),
         )?;
         self.bubble_merge = Some(bubble_merge);
         tracing::debug!("TopicActor: bubble merge started");
@@ -190,9 +208,65 @@ impl TopicActor {
             self.record_publisher.clone(),
             self.bootstrap.gossip_sender().await?,
             self.bootstrap.gossip_receiver().await?,
+            self.cancel_token.clone(),
         )?;
         self.message_overlap_merge = Some(message_overlap_merge);
         tracing::debug!("TopicActor: message overlap merge started");
         Ok(())
+    }
+}
+
+mod tests {
+    #[tokio::test]
+    async fn test_topic_full_shutdown_on_drop() {
+        let secret_key = iroh::SecretKey::generate(&mut rand::rng());
+        let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+            .secret_key(secret_key.clone())
+            .bind()
+            .await.unwrap();
+        let gossip = iroh_gossip::net::Gossip::builder()
+            .spawn(endpoint.clone());
+
+        let topic_id = crate::TopicId::new("my-iroh-gossip-topic".to_string());
+        let initial_secret = b"my-initial-secret".to_vec();
+        
+        let record_publisher = crate::RecordPublisher::new(
+            topic_id.clone(),
+            signing_key.verifying_key(),
+            signing_key.clone(),
+            None,
+            initial_secret,
+        );
+        
+        let topic = crate::Topic::new(record_publisher, gossip.clone(), true).await.unwrap();
+
+        let cancel_token = topic.cancel_token();
+        let receiver_probe = topic.gossip_receiver().await.unwrap();
+
+        let (sender, receiver) = topic.split().await.unwrap();
+
+        assert!(!cancel_token.is_cancelled());
+
+        drop(sender);
+        drop(receiver);
+        drop(topic);
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            cancel_token.cancelled(),
+        )
+        .await
+        .expect("TopicActor did not shut down, cancel token was never cancelled");
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            receiver_probe.next(),
+        )
+        .await
+        .expect("GossipReceiverActor did not shut down, next() hung");
+        assert!(result.is_none(), "expected None from dead receiver, got an event");
+
+        drop(receiver_probe);
     }
 }
