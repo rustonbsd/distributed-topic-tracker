@@ -48,9 +48,7 @@ impl GossipReceiver {
         )
         .0;
 
-        Self {
-            api,
-        }
+        Self { api }
     }
 
     /// Get the set of currently connected neighbor node IDs.
@@ -101,8 +99,11 @@ impl GossipReceiverActor {
         tracing::debug!("GossipReceiver: starting gossip receiver actor");
         loop {
             tokio::select! {
-                Ok(action) = rx.recv_async() => {
-                    action(self).await;
+                result = rx.recv_async() => {
+                    match result {
+                        Ok(action) => action(self).await,
+                        Err(_) => break Ok(()),
+                    }
                 }
                 raw_event = self.gossip_receiver.next() => {
                     match raw_event {
@@ -123,7 +124,30 @@ impl GossipReceiverActor {
                             }
                             break Ok(());
                         }
-                        Some(Ok(_)) => {}
+                        Some(Ok(ref event)) => {
+                            match event {
+                                iroh_gossip::api::Event::Received(msg) => {
+                                    tracing::debug!("GossipReceiver: received message from {:?}", msg.delivered_from);
+                                    let mut hash = sha2::Sha512::new();
+                                    hash.update(msg.content.clone());
+                                    if let Ok(lmh) = hash.finalize()[..32].try_into() {
+                                        if self.last_message_hashes.len() == 5 {
+                                            self.last_message_hashes.pop_front();
+                                        }
+                                        self.last_message_hashes.push_back(lmh);
+                                    }
+                                }
+                                iroh_gossip::api::Event::NeighborUp(node_id) => {
+                                    tracing::debug!("GossipReceiver: neighbor UP: {}", node_id);
+                                }
+                                iroh_gossip::api::Event::NeighborDown(node_id) => {
+                                    tracing::debug!("GossipReceiver: neighbor DOWN: {}", node_id);
+                                }
+                                iroh_gossip::api::Event::Lagged => {
+                                    tracing::debug!("GossipReceiver: event stream lagged");
+                                }
+                            }
+                        }
                     };
                     self.msg_queue.push_front(raw_event);
 
@@ -133,30 +157,6 @@ impl GossipReceiverActor {
                         } else {
                             let _ = waiter.send(None);
                             // this should never happen
-                        }
-                    }
-                    if let Some(Some(Ok(event))) = self.msg_queue.front() {
-                        match event {
-                            iroh_gossip::api::Event::Received(msg) => {
-                                tracing::debug!("GossipReceiver: received message from {:?}", msg.delivered_from);
-                                let mut hash = sha2::Sha512::new();
-                                hash.update(msg.content.clone());
-                                if let Ok(lmh) = hash.finalize()[..32].try_into() {
-                                    if self.last_message_hashes.len() == 5 {
-                                        self.last_message_hashes.pop_front();
-                                    }
-                                    self.last_message_hashes.push_back(lmh);
-                                }
-                            }
-                            iroh_gossip::api::Event::NeighborUp(node_id) => {
-                                tracing::debug!("GossipReceiver: neighbor UP: {}", node_id);
-                            }
-                            iroh_gossip::api::Event::NeighborDown(node_id) => {
-                                tracing::debug!("GossipReceiver: neighbor DOWN: {}", node_id);
-                            }
-                            iroh_gossip::api::Event::Lagged => {
-                                tracing::debug!("GossipReceiver: event stream lagged");
-                            }
                         }
                     }
                 }

@@ -57,15 +57,15 @@ impl BubbleMerge {
 }
 
 impl BubbleMergeActor {
-    async fn run(
-        &mut self,
-        rx: Receiver<Action<BubbleMergeActor>>,
-    ) -> Result<()> {
+    async fn run(&mut self, rx: Receiver<Action<BubbleMergeActor>>) -> Result<()> {
         tracing::debug!("BubbleMerge: starting bubble merge actor");
         loop {
             tokio::select! {
-                Ok(action) = rx.recv_async() => {
-                    action(self).await;
+                result = rx.recv_async() => {
+                    match result {
+                        Ok(action) => action(self).await,
+                        Err(_) => break Ok(()),
+                    }
                 }
                 _ = self.ticker.tick() => {
                     tracing::debug!("BubbleMerge: tick fired, checking for bubbles");

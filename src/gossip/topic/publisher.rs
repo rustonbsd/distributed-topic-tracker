@@ -28,7 +28,11 @@ impl Publisher {
     /// Create a new background publisher.
     ///
     /// Spawns a background task that periodically publishes records.
-    pub fn new(record_publisher: RecordPublisher, gossip_receiver: GossipReceiver, cancel_token: tokio_util::sync::CancellationToken) -> Result<Self> {
+    pub fn new(
+        record_publisher: RecordPublisher,
+        gossip_receiver: GossipReceiver,
+        cancel_token: tokio_util::sync::CancellationToken,
+    ) -> Result<Self> {
         let mut ticker = tokio::time::interval(Duration::from_secs(10));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let api = Handle::spawn_with(
@@ -51,8 +55,11 @@ impl PublisherActor {
         tracing::debug!("Publisher: starting publisher actor");
         loop {
             tokio::select! {
-                Ok(action) = rx.recv_async() => {
-                    action(self).await;
+                result = rx.recv_async() => {
+                    match result {
+                        Ok(action) => action(self).await,
+                        Err(_) => break Ok(()),
+                    }
                 }
                 _ = self.ticker.tick() => {
                     tracing::debug!("Publisher: tick fired, attempting to publish");
@@ -80,6 +87,7 @@ impl PublisherActor {
             .await
             .iter()
             .filter_map(|pub_key| TryInto::<[u8; 32]>::try_into(pub_key.as_slice()).ok())
+            .take(5)
             .collect::<Vec<_>>();
 
         let last_message_hashes = self
@@ -88,6 +96,7 @@ impl PublisherActor {
             .await
             .iter()
             .filter_map(|hash| TryInto::<[u8; 32]>::try_into(hash.as_slice()).ok())
+            .take(5)
             .collect::<Vec<_>>();
 
         tracing::debug!(
@@ -98,8 +107,16 @@ impl PublisherActor {
         );
 
         let record_content = crate::gossip::GossipRecordContent {
-            active_peers: active_peers.as_slice().try_into()?,
-            last_message_hashes: last_message_hashes.as_slice().try_into()?,
+            active_peers: {
+                let mut peers = [Default::default(); 5];
+                peers[..active_peers.len()].copy_from_slice(&active_peers);
+                peers
+            },
+            last_message_hashes: {
+                let mut hashes = [Default::default(); 5];
+                hashes[..last_message_hashes.len()].copy_from_slice(&last_message_hashes);
+                hashes
+            },
         };
 
         tracing::debug!("Publisher: created record content: {:?}", record_content);

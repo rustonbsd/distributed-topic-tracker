@@ -41,7 +41,7 @@ impl MessageOverlapMerge {
                 gossip_receiver,
                 gossip_sender,
                 ticker,
-                cancel_token
+                cancel_token,
             },
             |mut actor, rx| async move { actor.run(rx).await },
         )
@@ -55,8 +55,11 @@ impl MessageOverlapMergeActor {
         tracing::debug!("MessageOverlapMerge: starting message overlap merge actor");
         loop {
             tokio::select! {
-                Ok(action) = rx.recv_async() => {
-                    action(self).await;
+                result = rx.recv_async() => {
+                    match result {
+                        Ok(action) => action(self).await,
+                        Err(_) => break Ok(()),
+                    }
                 }
                 _ = self.ticker.tick() => {
                     tracing::debug!("MessageOverlapMerge: tick fired, checking for split-brain");
