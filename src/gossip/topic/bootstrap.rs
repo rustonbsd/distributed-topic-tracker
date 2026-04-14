@@ -8,9 +8,7 @@ use iroh::EndpointId;
 use tokio::time::sleep;
 
 use crate::{
-    GossipSender,
-    crypto::Record,
-    gossip::{GossipRecordContent, receiver::GossipReceiver},
+    GossipSender, crypto::Record, gossip::{GossipRecordContent, receiver::GossipReceiver}
 };
 
 /// Manages the peer discovery and joining process.
