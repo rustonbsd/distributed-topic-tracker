@@ -86,7 +86,7 @@ impl PublisherActor {
             .neighbors()
             .await
             .iter()
-            .filter_map(|pub_key| TryInto::<[u8; 32]>::try_into(pub_key.as_slice()).ok())
+            .filter_map(|pub_key| pub_key.as_bytes().as_ref().try_into().ok())
             .take(5)
             .collect::<Vec<_>>();
 
@@ -95,7 +95,7 @@ impl PublisherActor {
             .last_message_hashes()
             .await
             .iter()
-            .filter_map(|hash| TryInto::<[u8; 32]>::try_into(hash.as_slice()).ok())
+            .filter_map(|hash| hash.as_ref().try_into().ok())
             .take(5)
             .collect::<Vec<_>>();
 

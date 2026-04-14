@@ -1,12 +1,17 @@
 //! Actor-based wrapper for iroh-gossip message receiving.
 
-use std::collections::{HashSet, VecDeque};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use actor_helper::{Action, Handle, Receiver, act, act_ok};
 use anyhow::Result;
 use futures_lite::StreamExt;
 use iroh::EndpointId;
 use sha2::Digest;
+
+use crate::Topic;
 
 /// Gossip receiver that collects incoming messages and neighbor info.
 ///
@@ -15,6 +20,7 @@ use sha2::Digest;
 #[derive(Debug, Clone)]
 pub struct GossipReceiver {
     api: Handle<GossipReceiverActor, anyhow::Error>,
+    pub(crate) _topic_keep_alive: Option<Arc<Topic>>,
 }
 
 #[derive(Debug)]
@@ -48,7 +54,10 @@ impl GossipReceiver {
         )
         .0;
 
-        Self { api }
+        Self {
+            api,
+            _topic_keep_alive: None,
+        }
     }
 
     /// Get the set of currently connected neighbor node IDs.
@@ -58,7 +67,7 @@ impl GossipReceiver {
                 actor.gossip_receiver.neighbors().collect::<HashSet<EndpointId>>()
             }))
             .await
-            .expect("actor stopped")
+            .unwrap_or_default()
     }
 
     /// Check if the local node has joined the topic.
@@ -66,7 +75,7 @@ impl GossipReceiver {
         self.api
             .call(act_ok!(actor => async move { actor.gossip_receiver.is_joined() }))
             .await
-            .expect("actor stopped")
+            .unwrap_or(false)
     }
 
     /// Receive the next gossip event.
@@ -90,7 +99,7 @@ impl GossipReceiver {
         self.api
             .call(act_ok!(actor => async move { actor.last_message_hashes.clone() }))
             .await
-            .expect("void")
+            .unwrap_or_default()
     }
 }
 

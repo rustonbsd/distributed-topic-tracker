@@ -13,10 +13,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Run tests
+      run: cargo test --verbose
+      
   e2e-tests:
     name: End-to-End Tests
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v6
     
