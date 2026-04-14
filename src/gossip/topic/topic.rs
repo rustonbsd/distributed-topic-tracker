@@ -109,7 +109,12 @@ impl Topic {
         );
 
         let cancel_token = CancellationToken::new();
-        let bootstrap = Bootstrap::new(record_publisher.clone(), gossip.clone(), cancel_token.clone()).await?;
+        let bootstrap = Bootstrap::new(
+            record_publisher.clone(),
+            gossip.clone(),
+            cancel_token.clone(),
+        )
+        .await?;
         tracing::debug!("Topic: bootstrap instance created");
 
         let api = Handle::spawn(TopicActor {
@@ -232,13 +237,13 @@ mod tests {
         let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
             .secret_key(secret_key.clone())
             .bind()
-            .await.unwrap();
-        let gossip = iroh_gossip::net::Gossip::builder()
-            .spawn(endpoint.clone());
+            .await
+            .unwrap();
+        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
 
         let topic_id = crate::TopicId::new("my-iroh-gossip-topic".to_string());
         let initial_secret = b"my-initial-secret".to_vec();
-        
+
         let record_publisher = crate::RecordPublisher::new(
             topic_id.clone(),
             signing_key.verifying_key(),
@@ -246,8 +251,10 @@ mod tests {
             None,
             initial_secret,
         );
-        
-        let topic = crate::Topic::new(record_publisher, gossip.clone(), true).await.unwrap();
+
+        let topic = crate::Topic::new(record_publisher, gossip.clone(), true)
+            .await
+            .unwrap();
 
         let cancel_token = topic.cancel_token();
 
@@ -259,7 +266,9 @@ mod tests {
         drop(receiver);
         drop(topic);
 
-        tokio::task::yield_now().await;
+        tokio::time::timeout(std::time::Duration::from_secs(5), cancel_token.cancelled())
+            .await
+            .unwrap();
 
         assert!(cancel_token.is_cancelled());
     }
