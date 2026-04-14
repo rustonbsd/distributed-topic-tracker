@@ -61,21 +61,19 @@ impl GossipReceiver {
     }
 
     /// Get the set of currently connected neighbor node IDs.
-    pub async fn neighbors(&self) -> HashSet<EndpointId> {
+    pub async fn neighbors(&self) -> Result<HashSet<EndpointId>> {
         self.api
             .call(act_ok!(actor => async move {
                 actor.gossip_receiver.neighbors().collect::<HashSet<EndpointId>>()
             }))
             .await
-            .unwrap_or_default()
     }
 
     /// Check if the local node has joined the topic.
-    pub async fn is_joined(&self) -> bool {
+    pub async fn is_joined(&self) -> Result<bool> {
         self.api
             .call(act_ok!(actor => async move { actor.gossip_receiver.is_joined() }))
             .await
-            .unwrap_or(false)
     }
 
     /// Receive the next gossip event.
@@ -95,11 +93,10 @@ impl GossipReceiver {
     /// Get SHA512 hashes (first 32 bytes) of recently received messages.
     ///
     /// Used for detecting message overlap during network partition recovery.
-    pub async fn last_message_hashes(&self) -> VecDeque<[u8; 32]> {
+    pub async fn last_message_hashes(&self) -> Result<VecDeque<[u8; 32]>> {
         self.api
             .call(act_ok!(actor => async move { actor.last_message_hashes.clone() }))
             .await
-            .unwrap_or_default()
     }
 }
 
@@ -138,7 +135,7 @@ impl GossipReceiverActor {
                                 iroh_gossip::api::Event::Received(msg) => {
                                     tracing::debug!("GossipReceiver: received message from {:?}", msg.delivered_from);
                                     let mut hash = sha2::Sha512::new();
-                                    hash.update(msg.content.clone());
+                                    hash.update(&msg.content);
                                     if let Ok(lmh) = hash.finalize()[..32].try_into() {
                                         if self.last_message_hashes.len() == 5 {
                                             self.last_message_hashes.pop_front();

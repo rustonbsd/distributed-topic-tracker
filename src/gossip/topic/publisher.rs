@@ -84,7 +84,7 @@ impl PublisherActor {
         let active_peers = self
             .gossip_receiver
             .neighbors()
-            .await
+            .await?
             .iter()
             .filter_map(|pub_key| pub_key.as_bytes().as_ref().try_into().ok())
             .take(5)
@@ -93,7 +93,7 @@ impl PublisherActor {
         let last_message_hashes = self
             .gossip_receiver
             .last_message_hashes()
-            .await
+            .await?
             .iter()
             .filter_map(|hash| hash.as_ref().try_into().ok())
             .take(5)
