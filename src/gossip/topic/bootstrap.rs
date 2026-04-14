@@ -258,7 +258,7 @@ impl BootstrapActor {
                         continue;
                     }
                 }
-                tracing::debug!("Bootstrap: completed successfully");
+                tracing::debug!("Bootstrap: exited");
                 let _ = sender.send(());
             }
         });
