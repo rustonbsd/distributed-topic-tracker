@@ -93,8 +93,12 @@ impl BootstrapActor {
                 tracing::debug!("Bootstrap: starting bootstrap process");
                 while !cancel_token.is_cancelled() {
                     // Check if we are connected to at least one node
-                    if gossip_receiver.is_joined().await {
+                    let is_joined = gossip_receiver.is_joined().await;
+                    if let Ok(is_joined) = is_joined && is_joined {
                         tracing::debug!("Bootstrap: already joined, exiting bootstrap loop");
+                        break;
+                    } else if let Err(e) = is_joined {
+                        tracing::debug!("Bootstrap: error checking join status: {:?}", e);
                         break;
                     }
 
@@ -175,8 +179,12 @@ impl BootstrapActor {
                     // Maybe in the meantime someone connected to us via one of our published records
                     // we don't want to disrup the gossip rotations any more then we have to
                     // so we check again before joining new peers
-                    if gossip_receiver.is_joined().await {
+                    let is_joined = gossip_receiver.is_joined().await;
+                    if let Ok(is_joined) = is_joined && is_joined {
                         tracing::debug!("Bootstrap: joined while processing records, exiting");
+                        break;
+                    } else if let Err(e) = is_joined {
+                        tracing::debug!("Bootstrap: error checking join status: {:?}", e);
                         break;
                     }
 
@@ -191,11 +199,12 @@ impl BootstrapActor {
                                     _ = sleep(Duration::from_millis(100)) => {}
                                     _ = cancel_token.cancelled() => break,
                                 }
-                                if gossip_receiver.is_joined().await {
-                                    tracing::debug!(
-                                        "Bootstrap: successfully joined via peer {}",
-                                        node_id
-                                    );
+                                let is_joined = gossip_receiver.is_joined().await;
+                                if let Ok(is_joined) = is_joined && is_joined {
+                                    tracing::debug!("Bootstrap: successfully joined via peer {}", node_id);
+                                    break;
+                                } else if let Err(e) = is_joined {
+                                    tracing::debug!("Bootstrap: error checking join status: {:?}", e);
                                     break;
                                 }
                             }
@@ -212,7 +221,8 @@ impl BootstrapActor {
 
                     // If we are still not connected to anyone:
                     // give it the default iroh-gossip connection timeout before the final is_joined() check
-                    if !gossip_receiver.is_joined().await {
+                    let is_joined = gossip_receiver.is_joined().await;
+                    if let Ok(is_joined) = is_joined && is_joined {
                         tracing::debug!(
                             "Bootstrap: not joined yet, waiting 500ms before final check"
                         );
@@ -220,11 +230,19 @@ impl BootstrapActor {
                             _ = sleep(Duration::from_millis(500)) => {}
                             _ = cancel_token.cancelled() => break,
                         }
+                        break;
+                    } else if let Err(e) = is_joined {
+                        tracing::debug!("Bootstrap: error checking join status: {:?}", e);
+                        break;
                     }
 
                     // If we are connected: return
-                    if gossip_receiver.is_joined().await {
+                    let is_joined = gossip_receiver.is_joined().await;
+                    if let Ok(is_joined) = is_joined && is_joined {
                         tracing::debug!("Bootstrap: successfully joined after final wait");
+                        break;
+                    } else if let Err(e) = is_joined {
+                        tracing::debug!("Bootstrap: error checking join status: {:?}", e);
                         break;
                     } else {
                         tracing::debug!("Bootstrap: still not joined after attempting all peers");

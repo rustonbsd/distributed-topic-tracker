@@ -83,7 +83,7 @@ impl MessageOverlapMergeActor {
         let mut records = self.record_publisher.get_records(unix_minute - 1).await;
         records.extend(self.record_publisher.get_records(unix_minute).await);
 
-        let local_hashes = self.gossip_receiver.last_message_hashes().await;
+        let local_hashes = self.gossip_receiver.last_message_hashes().await?;
         tracing::debug!(
             "MessageOverlapMerge: checking {} records with {} local message hashes",
             records.len(),
