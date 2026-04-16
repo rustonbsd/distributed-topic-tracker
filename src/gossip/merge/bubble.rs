@@ -46,7 +46,8 @@ impl BubbleMerge {
         max_jitter: Duration,
         min_neighbors: usize,
     ) -> Result<Self> {
-        let mut ticker = tokio::time::interval(base_interval.max(Duration::from_secs(1)));
+        let base_interval = base_interval.max(Duration::from_secs(1));
+        let mut ticker = tokio::time::interval(base_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         let api = Handle::spawn_with(
@@ -57,7 +58,7 @@ impl BubbleMerge {
                 ticker,
                 cancel_token,
                 max_join_peers,
-                base_interval: base_interval.max(Duration::from_secs(1)),
+                base_interval,
                 max_jitter,
                 min_neighbors,
             },

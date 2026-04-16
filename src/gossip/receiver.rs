@@ -115,17 +115,16 @@ impl GossipReceiver {
     ///
     /// Returns `None` if the receiver is closed.
     pub async fn next(&mut self) -> Option<iroh_gossip::api::Event> {
-        match self.next_channel_receiver.recv().await {
-            Ok(event) => event,
-            Err(err) => match err {
-                tokio::sync::broadcast::error::RecvError::Closed => None,
-                tokio::sync::broadcast::error::RecvError::Lagged(skipped) => {
-                    tracing::warn!(
+        loop {
+            match self.next_channel_receiver.recv().await {
+                Ok(event) => return event,
+                Err(err) => match err {
+                    tokio::sync::broadcast::error::RecvError::Closed => return None,
+                    tokio::sync::broadcast::error::RecvError::Lagged(skipped) => tracing::warn!(
                         "GossipReceiver: event stream lagged, {skipped} events may have been missed"
-                    );
-                    Box::pin(self.next()).await
-                }
-            },
+                    ),
+                },
+            }
         }
     }
 
@@ -133,17 +132,16 @@ impl GossipReceiver {
         if self.is_joined().await.unwrap_or(false) {
             return Some(());
         }
-        match self.join_channel_receiver.recv().await {
-            Ok(event) => event,
-            Err(err) => match err {
-                tokio::sync::broadcast::error::RecvError::Closed => None,
-                tokio::sync::broadcast::error::RecvError::Lagged(skipped) => {
-                    tracing::warn!(
+        loop {
+            match self.join_channel_receiver.recv().await {
+                Ok(event) => return event,
+                Err(err) => match err {
+                    tokio::sync::broadcast::error::RecvError::Closed => return None,
+                    tokio::sync::broadcast::error::RecvError::Lagged(skipped) => tracing::warn!(
                         "GossipReceiver: join event stream lagged, {skipped} events may have been missed"
-                    );
-                    Box::pin(self.joined()).await
-                }
-            },
+                    ),
+                },
+            }
         }
     }
 
