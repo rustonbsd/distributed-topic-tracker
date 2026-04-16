@@ -112,7 +112,7 @@ impl BootstrapActor {
                     record_publisher.topic_id().hash(),
                     unix_minute,
                     record_content,
-                    &record_publisher.signing_key(),
+                    record_publisher.signing_key(),
                 ) {
                     tokio::spawn(async move {
                         let _ = record_creator.publish_record(record).await;
@@ -171,7 +171,7 @@ impl BootstrapActor {
                                 record_publisher.topic_id().hash(),
                                 unix_minute,
                                 record_content,
-                                &record_publisher.signing_key(),
+                                record_publisher.signing_key(),
                             ) {
                                 tokio::spawn(async move {
                                     let _ = record_creator.publish_record(record).await;
@@ -314,7 +314,7 @@ impl BootstrapActor {
                                     active_peers: [[0; 32]; MAX_RECORD_PEERS],
                                     last_message_hashes: [[0; 32]; MAX_MESSAGE_HASHES],
                                 },
-                                &record_publisher.signing_key(),
+                                record_publisher.signing_key(),
                             ) {
                                 tokio::spawn(async move {
                                     let _ = record_creator.publish_record(record).await;

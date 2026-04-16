@@ -164,6 +164,7 @@ impl Default for DhtConfig {
     }
 }
 
+/// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
 #[derive(Debug, Clone)]
 pub enum BubbleMergeConfig {
     Enabled {
@@ -174,6 +175,7 @@ pub enum BubbleMergeConfig {
     Disabled,
 }
 
+/// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
 #[derive(Debug, Clone)]
 pub enum MessageOverlapMergeConfig {
     Enabled {
@@ -193,7 +195,7 @@ pub enum PublisherConfig {
     Disabled,
 }
 
-/// total_interval = base_interval + rand::random::<usize>() % max_jitter;
+/// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
 #[derive(Debug, Clone)]
 pub struct MergeConfig {
     bubble_merge: BubbleMergeConfig,
@@ -264,7 +266,7 @@ pub struct BootstrapConfigBuilder {
 impl BootstrapConfigBuilder {
     /// Max bootstrap records per topic per minute slot (min 1). Default: 5.
     pub fn max_bootstrap_records(mut self, max_records: usize) -> Self {
-        self.config.max_bootstrap_records = max_records;
+        self.config.max_bootstrap_records = max_records.max(1);
         self
     }
 
@@ -446,7 +448,7 @@ impl ConfigBuilder {
 
     /// Max peers to join simultaneously (min 1). Default: 4.
     pub fn max_join_peer_count(mut self, max_peers: usize) -> Self {
-        self.config.max_join_peer_count = max_peers;
+        self.config.max_join_peer_count = max_peers.max(1);
         self
     }
 
