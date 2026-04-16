@@ -140,7 +140,7 @@ impl Topic {
             PublisherConfig::Enabled { .. }
         ) {
             tracing::debug!("Topic: starting publisher");
-            let _ = api.call(act!(actor => actor.start_publishing())).await;
+            api.call(act!(actor => actor.start_publishing())).await?;
         }
 
         if matches!(
@@ -148,7 +148,7 @@ impl Topic {
             BubbleMergeConfig::Enabled { .. }
         ) {
             tracing::debug!("Topic: starting bubble merge");
-            let _ = api.call(act!(actor => actor.start_bubble_merge())).await;
+            api.call(act!(actor => actor.start_bubble_merge())).await?;
         }
 
         if matches!(
@@ -159,9 +159,7 @@ impl Topic {
             MessageOverlapMergeConfig::Enabled { .. }
         ) {
             tracing::debug!("Topic: starting message overlap merge");
-            let _ = api
-                .call(act!(actor => actor.start_message_overlap_merge()))
-                .await;
+            api.call(act!(actor => actor.start_message_overlap_merge())).await?;
         }
 
         tracing::debug!("Topic: fully initialized");

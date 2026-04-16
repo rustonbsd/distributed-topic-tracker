@@ -3,7 +3,7 @@ use ed25519_dalek::SigningKey;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
-// Imports from distrubuted-topic-tracker
+// Imports from distributed-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, BubbleMergeConfig, Config, MergeConfig, MessageOverlapMergeConfig, RecordPublisher, TopicId};
 
 #[tokio::main]
