@@ -21,8 +21,7 @@ distributed-topic-tracker = "0.2"
 ```
 
 Basic iroh-gossip integration:
-
-```rust,no_run
+```rust,no_run,ignore
 use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;

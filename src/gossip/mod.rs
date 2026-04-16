@@ -15,7 +15,7 @@ pub use sender::GossipSender;
 use serde::{Deserialize, Serialize};
 pub use topic::{Bootstrap, Publisher, Topic, TopicId};
 
-use crate::RecordPublisher;
+use crate::{MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher};
 
 /// Record content for peer discovery.
 ///
@@ -24,9 +24,9 @@ use crate::RecordPublisher;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GossipRecordContent {
     /// Fixed array of 5 peer node IDs (as 32-byte arrays, empty slots are zero-filled)
-    pub active_peers: [[u8; 32]; 5],
+    pub active_peers: [[u8; 32]; MAX_RECORD_PEERS],
     /// Fixed array of 5 recent message hashes for overlap detection (empty slots are zero-filled)
-    pub last_message_hashes: [[u8; 32]; 5],
+    pub last_message_hashes: [[u8; 32]; MAX_MESSAGE_HASHES],
 }
 
 /// Extension trait for iroh Gossip enabling auto-discovery.

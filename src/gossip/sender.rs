@@ -1,13 +1,13 @@
 //! Actor-based wrapper for iroh-gossip broadcast operations.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use actor_helper::{Handle, act};
 use anyhow::Result;
 use iroh::EndpointId;
 use rand::seq::SliceRandom;
 
-use crate::Topic;
+use crate::{TimeoutConfig, Topic};
 
 /// Gossip sender that broadcasts messages to peers.
 ///
@@ -17,6 +17,7 @@ use crate::Topic;
 pub struct GossipSender {
     api: Handle<GossipSenderActor, anyhow::Error>,
     pub(crate) _topic_keep_alive: Option<Arc<Topic>>,
+    pub(crate) timeout_config: TimeoutConfig,
 }
 
 #[derive(Debug)]
@@ -26,22 +27,24 @@ pub struct GossipSenderActor {
 
 impl GossipSender {
     /// Create a new gossip sender from an iroh topic sender.
-    pub fn new(gossip_sender: iroh_gossip::api::GossipSender) -> Self {
+    pub fn new(gossip_sender: iroh_gossip::api::GossipSender, timeout_config: TimeoutConfig) -> Self {
         let api = Handle::spawn(GossipSenderActor { gossip_sender }).0;
 
         Self {
             api,
             _topic_keep_alive: None,
+            timeout_config,
         }
     }
 
     /// Broadcast a message to all peers in the topic.
     pub async fn broadcast(&self, data: Vec<u8>) -> Result<()> {
         tracing::debug!("GossipSender: broadcasting message ({} bytes)", data.len());
+        let broadcast_timeout = self.timeout_config.broadcast_timeout();
         self.api
             .call(act!(actor => async move {
                 tokio::time::timeout(
-                    Duration::from_secs(5),
+                    broadcast_timeout,
                     actor.gossip_sender.broadcast(data.into())
                 ).await
                 .map_err(|_| anyhow::anyhow!("broadcast timed out"))?
@@ -56,10 +59,11 @@ impl GossipSender {
             "GossipSender: broadcasting to neighbors ({} bytes)",
             data.len()
         );
+        let broadcast_neighbors_timeout = self.timeout_config.broadcast_neighbors_timeout();
         self.api
             .call(act!(actor => async move {
                 tokio::time::timeout(
-                    Duration::from_secs(5),
+                    broadcast_neighbors_timeout,
                     actor.gossip_sender.broadcast_neighbors(data.into())
                 ).await
                 .map_err(|_| anyhow::anyhow!("broadcast_neighbors timed out"))?
@@ -83,10 +87,11 @@ impl GossipSender {
 
         tracing::debug!("GossipSender: joining {} peers", peers.len());
 
+        let join_peers_timeout = self.timeout_config.join_peer_timeout();
         self.api
             .call(act!(actor => async move {
                 tokio::time::timeout(
-                    Duration::from_secs(5),
+                    join_peers_timeout,
                     actor.gossip_sender.join_peers(peers)
                 ).await
                 .map_err(|_| anyhow::anyhow!("join_peers timed out"))?

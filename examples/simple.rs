@@ -4,7 +4,7 @@ use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
 // Imports from distrubuted-topic-tracker
-use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
+use distributed_topic_tracker::{AutoDiscoveryGossip, Config, RecordPublisher, TopicId};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,10 +33,10 @@ async fn main() -> Result<()> {
 
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        signing_key.verifying_key(),
         signing_key.clone(),
         None,
         initial_secret,
+        Config::default(),
     );
 
     let topic = gossip

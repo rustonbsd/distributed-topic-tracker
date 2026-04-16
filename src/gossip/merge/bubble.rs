@@ -25,19 +25,28 @@ struct BubbleMergeActor {
     gossip_sender: GossipSender,
     ticker: tokio::time::Interval,
     cancel_token: tokio_util::sync::CancellationToken,
+    max_join_peers: usize,
+    base_interval: Duration,
+    max_jitter: Duration,
+    min_neighbors: usize,
 }
 
 impl BubbleMerge {
     /// Create a new bubble merge detector.
     ///
     /// Spawns a background task that periodically checks cluster size.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         record_publisher: RecordPublisher,
         gossip_sender: GossipSender,
         gossip_receiver: GossipReceiver,
         cancel_token: tokio_util::sync::CancellationToken,
+        max_join_peers: usize,
+        base_interval: Duration,
+        max_jitter: Duration,
+        min_neighbors: usize,
     ) -> Result<Self> {
-        let mut ticker = tokio::time::interval(Duration::from_secs(10));
+        let mut ticker = tokio::time::interval(base_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         let api = Handle::spawn_with(
@@ -47,6 +56,10 @@ impl BubbleMerge {
                 gossip_sender,
                 ticker,
                 cancel_token,
+                max_join_peers,
+                base_interval,
+                max_jitter,
+                min_neighbors,
             },
             |mut actor, rx| async move { actor.run(rx).await },
         )
@@ -70,7 +83,7 @@ impl BubbleMergeActor {
                 _ = self.ticker.tick() => {
                     tracing::debug!("BubbleMerge: tick fired, checking for bubbles");
                     let _ = self.merge().await;
-                    let next_interval = rand::random::<u64>() % 50;
+                    let next_interval = self.base_interval.as_secs() + if self.max_jitter.as_secs() > 0 { rand::random::<u64>() % self.max_jitter.as_secs() } else {0};
                     tracing::debug!("BubbleMerge: next check in {}s", next_interval);
                     self.ticker.reset_after(Duration::from_secs(next_interval));
                 }
@@ -97,10 +110,11 @@ impl BubbleMergeActor {
             records.len()
         );
 
-        if neighbors.len() < 4 && !records.is_empty() {
+        if neighbors.len() < self.min_neighbors && !records.is_empty() {
             tracing::debug!(
-                "BubbleMerge: detected small bubble ({} neighbors < 4), attempting merge",
-                neighbors.len()
+                "BubbleMerge: detected small bubble ({} neighbors < {}), attempting merge",
+                neighbors.len(),
+                self.min_neighbors
             );
             let node_ids = records
                 .iter()
@@ -114,7 +128,7 @@ impl BubbleMergeActor {
                             .filter_map(|&active_peer| {
                                 if active_peer == [0; 32]
                                     || neighbors.contains(&active_peer)
-                                    || active_peer.eq(record.node_id().to_vec().as_slice())
+                                    || active_peer == record.node_id()
                                     || active_peer.eq(self.record_publisher.pub_key().as_bytes())
                                 {
                                     None
@@ -145,7 +159,7 @@ impl BubbleMergeActor {
                 self.gossip_sender
                     .join_peers(
                         node_ids.iter().cloned().collect::<Vec<_>>(),
-                        Some(super::MAX_JOIN_PEERS_COUNT),
+                        Some(self.max_join_peers),
                     )
                     .await?;
                 tracing::debug!("BubbleMerge: join_peers request sent");

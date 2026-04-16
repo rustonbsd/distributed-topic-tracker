@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sha2::Digest;
 
-use crate::crypto::RecordTopic;
+use crate::TopicId;
 
 /// Trait for deriving time-rotated encryption keys.
 ///
@@ -96,13 +96,13 @@ impl RotationHandle {
 /// # Example
 ///
 /// ```ignore
-/// let topic = RecordTopic::from_str("my-topic")?;
+/// let topic = TopicId::from_str("my-topic")?;
 /// let unix_minute = crate::unix_minute(0);
 /// let signing_key = signing_keypair(topic, unix_minute);
 /// ```
-pub fn signing_keypair(record_topic: RecordTopic, unix_minute: u64) -> ed25519_dalek::SigningKey {
+pub fn signing_keypair(topic_id: &TopicId, unix_minute: u64) -> ed25519_dalek::SigningKey {
     let mut sign_keypair_hash = sha2::Sha512::new();
-    sign_keypair_hash.update(record_topic.hash());
+    sign_keypair_hash.update(topic_id.hash());
     sign_keypair_hash.update(unix_minute.to_le_bytes());
     let sign_keypair_seed: [u8; 32] = sign_keypair_hash.finalize()[..32]
         .try_into()
@@ -117,12 +117,12 @@ pub fn signing_keypair(record_topic: RecordTopic, unix_minute: u64) -> ed25519_d
 /// # Example
 ///
 /// ```ignore
-/// let topic = RecordTopic::from_str("my-topic")?;
+/// let topic = TopicId::from_str("my-topic")?;
 /// let rotation = RotationHandle::default();
 /// let enc_key = encryption_keypair(topic, &rotation, initial_hash, 0);
 /// ```
 pub fn encryption_keypair(
-    record_topic: RecordTopic,
+    topic_id: &TopicId,
     secret_rotation_function: &RotationHandle,
     initial_secret_hash: [u8; 32],
     unix_minute: u64,
@@ -130,7 +130,7 @@ pub fn encryption_keypair(
     let enc_keypair_seed =
         secret_rotation_function
             .0
-            .derive(record_topic.hash(), unix_minute, initial_secret_hash);
+            .derive(topic_id.hash(), unix_minute, initial_secret_hash);
     ed25519_dalek::SigningKey::from_bytes(&enc_keypair_seed)
 }
 
@@ -138,9 +138,9 @@ pub fn encryption_keypair(
 ///
 /// Salt = SHA512(topic_hash || unix_minute.to_le_bytes())[..32]
 /// Ensures records are stored in different DHT slots per minute.
-pub fn salt(record_topic: RecordTopic, unix_minute: u64) -> [u8; 32] {
+pub fn salt(topic_id: &TopicId, unix_minute: u64) -> [u8; 32] {
     let mut slot_hash = sha2::Sha512::new();
-    slot_hash.update(record_topic.hash());
+    slot_hash.update(topic_id.hash());
     slot_hash.update(unix_minute.to_le_bytes());
     slot_hash.finalize()[..32]
         .try_into()

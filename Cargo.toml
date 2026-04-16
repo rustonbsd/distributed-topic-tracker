@@ -42,9 +42,6 @@ serde = { version = "1", default-features = false, features = ["std"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "env-filter", "ansi"] }
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
 [[test]]
 name = "test_gossip"
 required-features = ["iroh-gossip"]
@@ -71,4 +68,12 @@ required-features = ["iroh-gossip"]
 
 [[example]]
 name = "simple"
+required-features = ["iroh-gossip"]
+
+[[example]]
+name = "full_config"
+required-features = ["iroh-gossip"]
+
+[[example]]
+name = "without_mergers"
 required-features = ["iroh-gossip"]

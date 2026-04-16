@@ -1,10 +1,10 @@
 //! Main topic handle combining bootstrap, publishing, and merging.
 
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use crate::{
-    GossipSender,
-    crypto::RecordTopic,
+    BubbleMergeConfig, GossipSender, MessageOverlapMergeConfig,
+    config::PublisherConfig,
     gossip::{
         merge::{BubbleMerge, MessageOverlapMerge},
         topic::{bootstrap::Bootstrap, publisher::Publisher},
@@ -25,14 +25,13 @@ use tokio_util::sync::CancellationToken;
 /// let topic_id = TopicId::new("chat-room-1".to_string());
 /// ```
 #[derive(Debug, Clone)]
-pub struct TopicId {
-    _raw: String,
-    hash: [u8; 32],
-}
+pub struct TopicId([u8; 32]);
 
-impl From<TopicId> for RecordTopic {
-    fn from(val: TopicId) -> Self {
-        RecordTopic::from_bytes(&val.hash)
+impl FromStr for TopicId {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self::new(s.to_string()))
     }
 }
 
@@ -44,23 +43,21 @@ impl TopicId {
         let mut raw_hash = sha2::Sha512::new();
         raw_hash.update(raw.as_bytes());
 
-        Self {
-            _raw: raw,
-            hash: raw_hash.finalize()[..32]
+        Self(
+            raw_hash.finalize()[..32]
                 .try_into()
                 .expect("hashing 'raw' failed"),
-        }
+        )
+    }
+
+    /// Create from a pre-computed 32-byte hash.
+    pub fn from_bytes(bytes: &[u8; 32]) -> Self {
+        Self(*bytes)
     }
 
     /// Get the hash bytes.
     pub fn hash(&self) -> [u8; 32] {
-        self.hash
-    }
-
-    /// Get the original string.
-    #[allow(dead_code)]
-    pub fn raw(&self) -> &str {
-        &self._raw
+        self.0
     }
 }
 
@@ -113,13 +110,15 @@ impl Topic {
             record_publisher.clone(),
             gossip.clone(),
             cancel_token.clone(),
+            record_publisher.config().timeouts().clone(),
+            record_publisher.config().bootstrap_config().clone(),
         )
         .await?;
         tracing::debug!("Topic: bootstrap instance created");
 
         let api = Handle::spawn(TopicActor {
             bootstrap: bootstrap.clone(),
-            record_publisher,
+            record_publisher: record_publisher.clone(),
             publisher: None,
             bubble_merge: None,
             message_overlap_merge: None,
@@ -130,22 +129,40 @@ impl Topic {
         let bootstrap_done = bootstrap.bootstrap().await?;
         if !async_bootstrap {
             tracing::debug!("Topic: waiting for bootstrap to complete");
-            bootstrap_done.await?;
+            bootstrap_done.await??;
             tracing::debug!("Topic: bootstrap completed");
         } else {
             tracing::debug!("Topic: bootstrap started asynchronously");
         }
 
-        tracing::debug!("Topic: starting publisher");
-        let _ = api.call(act!(actor => actor.start_publishing())).await;
+        if matches!(
+            record_publisher.config().publisher_config(),
+            PublisherConfig::Enabled { .. }
+        ) {
+            tracing::debug!("Topic: starting publisher");
+            let _ = api.call(act!(actor => actor.start_publishing())).await;
+        }
 
-        tracing::debug!("Topic: starting bubble merge");
-        let _ = api.call(act!(actor => actor.start_bubble_merge())).await;
+        if matches!(
+            record_publisher.config().merge_config().bubble_merge(),
+            BubbleMergeConfig::Enabled { .. }
+        ) {
+            tracing::debug!("Topic: starting bubble merge");
+            let _ = api.call(act!(actor => actor.start_bubble_merge())).await;
+        }
 
-        tracing::debug!("Topic: starting message overlap merge");
-        let _ = api
-            .call(act!(actor => actor.start_message_overlap_merge()))
-            .await;
+        if matches!(
+            record_publisher
+                .config()
+                .merge_config()
+                .message_overlap_merge(),
+            MessageOverlapMergeConfig::Enabled { .. }
+        ) {
+            tracing::debug!("Topic: starting message overlap merge");
+            let _ = api
+                .call(act!(actor => actor.start_message_overlap_merge()))
+                .await;
+        }
 
         tracing::debug!("Topic: fully initialized");
         Ok(Self { api, cancel_token })
@@ -190,40 +207,74 @@ impl Topic {
 
 impl TopicActor {
     pub async fn start_publishing(&mut self) -> Result<()> {
-        tracing::debug!("TopicActor: initializing publisher");
-        let publisher = Publisher::new(
-            self.record_publisher.clone(),
-            self.bootstrap.gossip_receiver().await?,
-            self.cancel_token.clone(),
-        )?;
-        self.publisher = Some(publisher);
-        tracing::debug!("TopicActor: publisher started");
+        if let PublisherConfig::Enabled {
+            initial_delay,
+            base_interval,
+            max_jitter,
+        } = self.record_publisher.config().publisher_config()
+        {
+            tracing::debug!("TopicActor: initializing publisher");
+            let publisher = Publisher::new(
+                self.record_publisher.clone(),
+                self.bootstrap.gossip_receiver().await?,
+                self.cancel_token.clone(),
+                *initial_delay,
+                *base_interval,
+                *max_jitter,
+            )?;
+            self.publisher = Some(publisher);
+            tracing::debug!("TopicActor: publisher started");
+        }
         Ok(())
     }
 
     pub async fn start_bubble_merge(&mut self) -> Result<()> {
-        tracing::debug!("TopicActor: initializing bubble merge");
-        let bubble_merge = BubbleMerge::new(
-            self.record_publisher.clone(),
-            self.bootstrap.gossip_sender().await?,
-            self.bootstrap.gossip_receiver().await?,
-            self.cancel_token.clone(),
-        )?;
-        self.bubble_merge = Some(bubble_merge);
-        tracing::debug!("TopicActor: bubble merge started");
+        if let BubbleMergeConfig::Enabled {
+            base_interval,
+            max_jitter,
+            min_neighbors,
+        } = self.record_publisher.config().merge_config().bubble_merge()
+        {
+            tracing::debug!("TopicActor: initializing bubble merge");
+            let bubble_merge = BubbleMerge::new(
+                self.record_publisher.clone(),
+                self.bootstrap.gossip_sender().await?,
+                self.bootstrap.gossip_receiver().await?,
+                self.cancel_token.clone(),
+                self.record_publisher.config().max_join_peer_count().max(1),
+                *base_interval,
+                *max_jitter,
+                *min_neighbors,
+            )?;
+            self.bubble_merge = Some(bubble_merge);
+            tracing::debug!("TopicActor: bubble merge started");
+        }
         Ok(())
     }
 
     pub async fn start_message_overlap_merge(&mut self) -> Result<()> {
-        tracing::debug!("TopicActor: initializing message overlap merge");
-        let message_overlap_merge = MessageOverlapMerge::new(
-            self.record_publisher.clone(),
-            self.bootstrap.gossip_sender().await?,
-            self.bootstrap.gossip_receiver().await?,
-            self.cancel_token.clone(),
-        )?;
-        self.message_overlap_merge = Some(message_overlap_merge);
-        tracing::debug!("TopicActor: message overlap merge started");
+        if let MessageOverlapMergeConfig::Enabled {
+            base_interval,
+            max_jitter,
+        } = self
+            .record_publisher
+            .config()
+            .merge_config()
+            .message_overlap_merge()
+        {
+            tracing::debug!("TopicActor: initializing message overlap merge");
+            let message_overlap_merge = MessageOverlapMerge::new(
+                self.record_publisher.clone(),
+                self.bootstrap.gossip_sender().await?,
+                self.bootstrap.gossip_receiver().await?,
+                self.cancel_token.clone(),
+                self.record_publisher.config().max_join_peer_count().max(1),
+                *base_interval,
+                *max_jitter,
+            )?;
+            self.message_overlap_merge = Some(message_overlap_merge);
+            tracing::debug!("TopicActor: message overlap merge started");
+        }
         Ok(())
     }
 }
@@ -246,10 +297,10 @@ mod tests {
 
         let record_publisher = crate::RecordPublisher::new(
             topic_id.clone(),
-            signing_key.verifying_key(),
             signing_key.clone(),
             None,
             initial_secret,
+            crate::config::Config::default(),
         );
 
         let topic = crate::Topic::new(record_publisher, gossip.clone(), true)

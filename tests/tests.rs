@@ -1,33 +1,29 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use distributed_topic_tracker::{
-    DefaultSecretRotation, EncryptedRecord, GossipRecordContent, Record, RecordTopic,
-    RotationHandle, encryption_keypair, salt, signing_keypair, unix_minute,
+    AutoDiscoveryGossip, BubbleMergeConfig, Config, DefaultSecretRotation, EncryptedRecord,
+    GossipReceiver, GossipRecordContent, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, MergeConfig,
+    MessageOverlapMergeConfig, PublisherConfig, Record, RecordPublisher, RotationHandle, TopicId,
+    encryption_keypair, salt, signing_keypair, unix_minute,
 };
 use mainline::SigningKey;
+use tokio::sync::Barrier;
 
 #[test]
 fn test_record_serialization_roundtrip() {
     let signing_key = SigningKey::generate(&mut rand::rng());
     let topic = [1u8; 32];
     let unix_minute = 12345u64;
-    let node_id = [2u8; 32];
-    let active_peers = [[3u8; 32]; 5];
-    let last_message_hashes = [[4u8; 32]; 5];
+    let active_peers = [[3u8; 32]; MAX_RECORD_PEERS];
+    let last_message_hashes = [[4u8; 32]; MAX_MESSAGE_HASHES];
 
     let record_content = GossipRecordContent {
         active_peers,
         last_message_hashes,
     };
 
-    let record = Record::sign(
-        topic,
-        unix_minute,
-        node_id,
-        record_content.clone(),
-        &signing_key,
-    )
-    .expect("Failed to sign record");
+    let record = Record::sign(topic, unix_minute, record_content.clone(), &signing_key)
+        .expect("Failed to sign record");
 
     // Test serialization roundtrip
     let bytes = record.to_bytes();
@@ -55,16 +51,15 @@ fn test_record_verification() {
     let signing_key = SigningKey::generate(&mut rand::rng());
     let topic = [1u8; 32];
     let unix_minute = 12345u64;
-    let node_id = signing_key.verifying_key().to_bytes();
-    let active_peers = [[3u8; 32]; 5];
-    let last_message_hashes = [[4u8; 32]; 5];
+    let active_peers = [[3u8; 32]; MAX_RECORD_PEERS];
+    let last_message_hashes = [[4u8; 32]; MAX_MESSAGE_HASHES];
 
     let record_content = GossipRecordContent {
         active_peers,
         last_message_hashes,
     };
 
-    let record = Record::sign(topic, unix_minute, node_id, record_content, &signing_key).unwrap();
+    let record = Record::sign(topic, unix_minute, record_content, &signing_key).unwrap();
 
     // Valid verification should pass
     assert!(record.verify(&topic, unix_minute).is_ok());
@@ -83,23 +78,16 @@ fn test_encrypted_record_roundtrip() {
     let encryption_key = SigningKey::generate(&mut rand::rng());
     let topic = [1u8; 32];
     let unix_minute = 12345u64;
-    let node_id = signing_key.verifying_key().to_bytes();
-    let active_peers = [[3u8; 32]; 5];
-    let last_message_hashes = [[4u8; 32]; 5];
+    let active_peers = [[3u8; 32]; MAX_RECORD_PEERS];
+    let last_message_hashes = [[4u8; 32]; MAX_MESSAGE_HASHES];
 
     let record_content = GossipRecordContent {
         active_peers,
         last_message_hashes,
     };
 
-    let record = Record::sign(
-        topic,
-        unix_minute,
-        node_id,
-        record_content.clone(),
-        &signing_key,
-    )
-    .expect("Failed to sign record");
+    let record = Record::sign(topic, unix_minute, record_content.clone(), &signing_key)
+        .expect("Failed to sign record");
 
     // Test encryption/decryption roundtrip
     let encrypted = record.encrypt(&encryption_key);
@@ -128,16 +116,15 @@ fn test_encrypted_record_serialization() {
     let encryption_key = SigningKey::generate(&mut rand::rng());
     let topic = [1u8; 32];
     let unix_minute = 12345u64;
-    let node_id = signing_key.verifying_key().to_bytes();
-    let active_peers = [[3u8; 32]; 5];
-    let last_message_hashes = [[4u8; 32]; 5];
+    let active_peers = [[3u8; 32]; MAX_RECORD_PEERS];
+    let last_message_hashes = [[4u8; 32]; MAX_MESSAGE_HASHES];
 
     let record_content = GossipRecordContent {
         active_peers,
         last_message_hashes,
     };
 
-    let record = Record::sign(topic, unix_minute, node_id, record_content, &signing_key)
+    let record = Record::sign(topic, unix_minute, record_content, &signing_key)
         .expect("Failed to sign record");
 
     let encrypted = record.encrypt(&encryption_key);
@@ -194,58 +181,206 @@ fn test_unix_minute_function() {
 
 #[test]
 fn test_topic_signing_keypair_deterministic() {
-    let topic_id = RecordTopic::from_str("test-topic").unwrap();
-    let record_topic = topic_id;
+    let topic_id = TopicId::from_str("test-topic").unwrap();
     let unix_minute = 12345u64;
 
-    let key1 = signing_keypair(record_topic, unix_minute);
-    let key2 = signing_keypair(record_topic, unix_minute);
+    let key1 = signing_keypair(&topic_id, unix_minute);
+    let key2 = signing_keypair(&topic_id, unix_minute);
 
     // Same inputs should produce same keypair
     assert_eq!(key1.to_bytes(), key2.to_bytes());
 
     // Different unix_minute should produce different keypair
-    let key3 = signing_keypair(record_topic, unix_minute + 1);
+    let key3 = signing_keypair(&topic_id, unix_minute + 1);
     assert_ne!(key1.to_bytes(), key3.to_bytes());
 }
 
 #[test]
 fn test_topic_encryption_keypair_deterministic() {
-    let topic_id = RecordTopic::from_str("test-topic").unwrap();
-    let record_topic = topic_id;
+    let topic_id = TopicId::from_str("test-topic").unwrap();
     let unix_minute = 12345u64;
     let initial_secret_hash = [1u8; 32];
     let rotation = RotationHandle::new(DefaultSecretRotation);
 
-    let key1 = encryption_keypair(record_topic, &rotation, initial_secret_hash, unix_minute);
-    let key2 = encryption_keypair(record_topic, &rotation, initial_secret_hash, unix_minute);
+    let key1 = encryption_keypair(&topic_id, &rotation, initial_secret_hash, unix_minute);
+    let key2 = encryption_keypair(&topic_id, &rotation, initial_secret_hash, unix_minute);
 
     // Same inputs should produce same keypair
     assert_eq!(key1.to_bytes(), key2.to_bytes());
 
     // Different unix_minute should produce different keypair
-    let key3 = crate::encryption_keypair(
-        record_topic,
-        &rotation,
-        initial_secret_hash,
-        unix_minute + 1,
-    );
+    let key3 =
+        crate::encryption_keypair(&topic_id, &rotation, initial_secret_hash, unix_minute + 1);
     assert_ne!(key1.to_bytes(), key3.to_bytes());
 }
 
 #[test]
 fn test_topic_salt_deterministic() {
-    let topic_id = RecordTopic::from_str("test-topic").unwrap();
-    let record_topic = topic_id;
+    let topic_id = TopicId::from_str("test-topic").unwrap();
     let unix_minute = 12345u64;
 
-    let salt1 = salt(record_topic, unix_minute);
-    let salt2 = salt(record_topic, unix_minute);
+    let salt1 = salt(&topic_id, unix_minute);
+    let salt2 = salt(&topic_id, unix_minute);
 
     // Same inputs should produce same salt
     assert_eq!(salt1, salt2);
 
     // Different unix_minute should produce different salt
-    let salt3 = salt(record_topic, unix_minute + 1);
+    let salt3 = salt(&topic_id, unix_minute + 1);
     assert_ne!(salt1, salt3);
+}
+
+#[test]
+fn test_topic_id_creation() {
+    let topic_id = TopicId::new("test-topic".to_string());
+    assert_eq!(topic_id.hash().len(), 32);
+
+    // Same input should produce same hash
+    let topic_id2 = TopicId::new("test-topic".to_string());
+    assert_eq!(topic_id.hash(), topic_id2.hash());
+
+    // Different input should produce different hash
+    let topic_id3 = TopicId::new("different-topic".to_string());
+    assert_ne!(topic_id.hash(), topic_id3.hash());
+}
+
+#[cfg(feature = "iroh-gossip")]
+#[tokio::test]
+async fn test_multiple_receivers_all_get_events() {
+    const N: usize = 3;
+    const MSG_COUNT: usize = 3;
+
+    let config = Config::builder()
+        .publisher_config(PublisherConfig::Disabled)
+        .merge_config(MergeConfig::new(
+            BubbleMergeConfig::Disabled,
+            MessageOverlapMergeConfig::Disabled,
+        ))
+        .build();
+
+    let topic_id = TopicId::new("test-multi-receiver".to_string());
+
+    // Peer A
+    let secret_a = iroh::SecretKey::generate(&mut rand::rng());
+    let signing_a = mainline::SigningKey::from_bytes(&secret_a.to_bytes());
+    let endpoint_a = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+        .secret_key(secret_a)
+        .bind()
+        .await
+        .unwrap();
+    let gossip_a = iroh_gossip::net::Gossip::builder().spawn(endpoint_a.clone());
+    let _router_a = iroh::protocol::Router::builder(endpoint_a.clone())
+        .accept(iroh_gossip::ALPN, gossip_a.clone())
+        .spawn();
+
+    let rp_a = RecordPublisher::new(
+        topic_id.clone(),
+        signing_a,
+        None,
+        b"secret".to_vec(),
+        config.clone(),
+    );
+
+    let topic_a = gossip_a
+        .subscribe_and_join_with_auto_discovery_no_wait(rp_a)
+        .await
+        .unwrap();
+    let (sender_a, mut receiver_a) = topic_a.split().await.unwrap();
+
+    // Peer B
+    let secret_b = iroh::SecretKey::generate(&mut rand::rng());
+    let signing_b = mainline::SigningKey::from_bytes(&secret_b.to_bytes());
+    let endpoint_b = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+        .secret_key(secret_b)
+        .bind()
+        .await
+        .unwrap();
+    let gossip_b = iroh_gossip::net::Gossip::builder().spawn(endpoint_b.clone());
+    let _router_b = iroh::protocol::Router::builder(endpoint_b.clone())
+        .accept(iroh_gossip::ALPN, gossip_b.clone())
+        .spawn();
+
+    let rp_b = RecordPublisher::new(
+        topic_id.clone(),
+        signing_b,
+        None,
+        b"secret".to_vec(),
+        config,
+    );
+
+    let topic_b = gossip_b
+        .subscribe_and_join_with_auto_discovery(rp_b)
+        .await
+        .unwrap();
+    let (sender_b, mut receiver_b) = topic_b.split().await.unwrap();
+
+    // Join peers
+    sender_a
+        .join_peers(vec![endpoint_b.id()], None)
+        .await
+        .unwrap();
+    sender_b
+        .join_peers(vec![endpoint_a.id()], None)
+        .await
+        .unwrap();
+
+    receiver_a.joined().await.unwrap();
+    receiver_b.joined().await.unwrap();
+
+    let receivers: Vec<GossipReceiver> = (0..N)
+        .map(|_| receiver_b.clone())
+        .chain((0..N).map(|_| receiver_a.clone()))
+        .collect();
+    let barrier = Arc::new(Barrier::new(receivers.len() + 1));
+
+    let handles = receivers
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut rx)| {
+            let barrier = barrier.clone();
+            tokio::spawn(async move {
+                barrier.wait().await;
+
+                let mut received = Vec::new();
+                while received.len() < MSG_COUNT {
+                    match tokio::time::timeout(std::time::Duration::from_secs(30), rx.next()).await
+                    {
+                        Ok(Some(iroh_gossip::api::Event::Received(msg))) => {
+                            received.push(msg.content.to_vec());
+                        }
+                        Ok(Some(_)) => continue,
+                        other => panic!("receiver {i}: unexpected result: {other:?}"),
+                    }
+                }
+                received
+            })
+        })
+        .collect::<Vec<_>>();
+
+    barrier.wait().await;
+
+    for i in 0..MSG_COUNT {
+        sender_a
+            .broadcast(format!("msg-a-{i}").into_bytes())
+            .await
+            .unwrap();
+        sender_b
+            .broadcast(format!("msg-b-{i}").into_bytes())
+            .await
+            .unwrap();
+    }
+
+    for (i, handle) in handles.into_iter().enumerate() {
+        let received = tokio::time::timeout(std::time::Duration::from_secs(60), handle)
+            .await
+            .unwrap_or_else(|_| panic!("receiver {i} timed out"))
+            .unwrap();
+
+        assert_eq!(
+            received.len(),
+            MSG_COUNT,
+            "receiver {i} got {} messages, expected {MSG_COUNT}",
+            received.len(),
+        );
+    }
 }

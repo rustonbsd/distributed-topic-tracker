@@ -22,6 +22,10 @@ struct MessageOverlapMergeActor {
     gossip_sender: GossipSender,
     ticker: tokio::time::Interval,
     cancel_token: tokio_util::sync::CancellationToken,
+
+    max_join_peers: usize,
+    base_interval: Duration,
+    max_jitter: Duration,
 }
 
 impl MessageOverlapMerge {
@@ -31,8 +35,11 @@ impl MessageOverlapMerge {
         gossip_sender: GossipSender,
         gossip_receiver: GossipReceiver,
         cancel_token: tokio_util::sync::CancellationToken,
+        max_join_peers: usize,
+        base_interval: Duration,
+        max_jitter: Duration,
     ) -> Result<Self> {
-        let mut ticker = tokio::time::interval(Duration::from_secs(10));
+        let mut ticker = tokio::time::interval(base_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         let api = Handle::spawn_with(
@@ -42,6 +49,9 @@ impl MessageOverlapMerge {
                 gossip_sender,
                 ticker,
                 cancel_token,
+                max_join_peers,
+                base_interval,
+                max_jitter,
             },
             |mut actor, rx| async move { actor.run(rx).await },
         )
@@ -64,7 +74,7 @@ impl MessageOverlapMergeActor {
                 _ = self.ticker.tick() => {
                     tracing::debug!("MessageOverlapMerge: tick fired, checking for split-brain");
                     let _ = self.merge().await;
-                    let next_interval = rand::random::<u64>() % 50;
+                    let next_interval = self.base_interval.as_secs() + if self.max_jitter.as_secs() > 0 { rand::random::<u64>() % self.max_jitter.as_secs() } else {0};
                     tracing::debug!("MessageOverlapMerge: next check in {}s", next_interval);
                     self.ticker.reset_after(Duration::from_secs(next_interval));
                 }
@@ -112,25 +122,35 @@ impl MessageOverlapMergeActor {
             );
 
             if !peers_to_join.is_empty() {
+                let active_neighbors = self.gossip_receiver.neighbors().await?;
                 let node_ids = peers_to_join
                     .iter()
                     .flat_map(|&record| {
                         let mut peers = vec![];
-                        if let Ok(node_id) = EndpointId::from_bytes(&record.node_id()) {
-                            peers.push(node_id);
+                        if let Ok(endpoint_id) = EndpointId::from_bytes(&record.node_id())
+                            && endpoint_id
+                                != EndpointId::from_verifying_key(self.record_publisher.pub_key())
+                        {
+                            peers.push(endpoint_id);
                         }
                         if let Ok(content) = record.content::<GossipRecordContent>() {
                             for active_peer in content.active_peers {
                                 if active_peer == [0; 32] {
                                     continue;
                                 }
-                                if let Ok(node_id) = EndpointId::from_bytes(&active_peer) {
-                                    peers.push(node_id);
+                                if let Ok(endpoint_id) = EndpointId::from_bytes(&active_peer)
+                                    && endpoint_id
+                                        != EndpointId::from_verifying_key(
+                                            self.record_publisher.pub_key(),
+                                        )
+                                {
+                                    peers.push(endpoint_id);
                                 }
                             }
                         }
                         peers
                     })
+                    .filter(|node_id| !active_neighbors.contains(node_id))
                     .collect::<HashSet<_>>();
 
                 tracing::debug!(
@@ -141,7 +161,7 @@ impl MessageOverlapMergeActor {
                 self.gossip_sender
                     .join_peers(
                         node_ids.iter().cloned().collect::<Vec<_>>(),
-                        Some(super::MAX_JOIN_PEERS_COUNT),
+                        Some(self.max_join_peers),
                     )
                     .await?;
 

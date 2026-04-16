@@ -3,13 +3,13 @@
 use actor_helper::{Action, Handle, Receiver};
 use std::time::Duration;
 
-use crate::{GossipReceiver, RecordPublisher};
+use crate::{GossipReceiver, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher};
 use anyhow::Result;
 
 /// Periodically publishes node state to DHT for peer discovery.
 ///
-/// Publishes a record after an initial 10s delay, then repeatedly with
-/// randomized 0-49s intervals, containing this node's active neighbor list
+/// Publishes a record after an initial delay initial_delay, then repeatedly with
+/// randomized base_interval + rand(0 to max_jitter) intervals, containing this node's active neighbor list
 /// and message hashes for bubble detection and merging.
 #[derive(Debug, Clone)]
 pub struct Publisher {
@@ -22,6 +22,8 @@ struct PublisherActor {
     gossip_receiver: GossipReceiver,
     ticker: tokio::time::Interval,
     cancel_token: tokio_util::sync::CancellationToken,
+    base_interval: Duration,
+    max_jitter: Duration,
 }
 
 impl Publisher {
@@ -32,8 +34,11 @@ impl Publisher {
         record_publisher: RecordPublisher,
         gossip_receiver: GossipReceiver,
         cancel_token: tokio_util::sync::CancellationToken,
+        initial_delay: Duration,
+        base_interval: Duration,
+        max_jitter: Duration,
     ) -> Result<Self> {
-        let mut ticker = tokio::time::interval(Duration::from_secs(10));
+        let mut ticker = tokio::time::interval(initial_delay);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let api = Handle::spawn_with(
             PublisherActor {
@@ -41,6 +46,8 @@ impl Publisher {
                 gossip_receiver,
                 ticker,
                 cancel_token,
+                base_interval,
+                max_jitter,
             },
             |mut actor, rx| async move { actor.run(rx).await },
         )
@@ -64,7 +71,7 @@ impl PublisherActor {
                 _ = self.ticker.tick() => {
                     tracing::debug!("Publisher: tick fired, attempting to publish");
                     let _ = self.publish().await;
-                    let next_interval = rand::random::<u64>() % 50;
+                    let next_interval = self.base_interval.as_secs() + if self.max_jitter.as_secs() > 0 { rand::random::<u64>() % self.max_jitter.as_secs() } else {0};
                     tracing::debug!("Publisher: next publish in {}s", next_interval);
                     self.ticker.reset_after(Duration::from_secs(next_interval));
                 }
@@ -87,7 +94,7 @@ impl PublisherActor {
             .await?
             .iter()
             .filter_map(|pub_key| pub_key.as_bytes().as_ref().try_into().ok())
-            .take(5)
+            .take(MAX_RECORD_PEERS)
             .collect::<Vec<_>>();
 
         let last_message_hashes = self
@@ -96,7 +103,7 @@ impl PublisherActor {
             .await?
             .iter()
             .filter_map(|hash| hash.as_ref().try_into().ok())
-            .take(5)
+            .take(MAX_MESSAGE_HASHES)
             .collect::<Vec<_>>();
 
         tracing::debug!(
@@ -108,12 +115,12 @@ impl PublisherActor {
 
         let record_content = crate::gossip::GossipRecordContent {
             active_peers: {
-                let mut peers = [Default::default(); 5];
+                let mut peers = [Default::default(); MAX_RECORD_PEERS];
                 peers[..active_peers.len()].copy_from_slice(&active_peers);
                 peers
             },
             last_message_hashes: {
-                let mut hashes = [Default::default(); 5];
+                let mut hashes = [Default::default(); MAX_MESSAGE_HASHES];
                 hashes[..last_message_hashes.len()].copy_from_slice(&last_message_hashes);
                 hashes
             },
