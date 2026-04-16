@@ -159,7 +159,8 @@ impl Topic {
             MessageOverlapMergeConfig::Enabled { .. }
         ) {
             tracing::debug!("Topic: starting message overlap merge");
-            api.call(act!(actor => actor.start_message_overlap_merge())).await?;
+            api.call(act!(actor => actor.start_message_overlap_merge()))
+                .await?;
         }
 
         tracing::debug!("Topic: fully initialized");
@@ -279,6 +280,77 @@ impl TopicActor {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn test_receiver_returns_none_after_shutdown() {
+        let secret_key = iroh::SecretKey::generate(&mut rand::rng());
+        let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+            .secret_key(secret_key.clone())
+            .bind()
+            .await
+            .unwrap();
+        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
+
+        let topic_id = crate::TopicId::new("shutdown-receiver-test".to_string());
+        let initial_secret = b"my-initial-secret".to_vec();
+
+        let record_publisher = crate::RecordPublisher::new(
+            topic_id.clone(),
+            signing_key.clone(),
+            None,
+            initial_secret,
+            crate::config::Config::default(),
+        );
+
+        let topic = crate::Topic::new(record_publisher, gossip.clone(), true)
+            .await
+            .unwrap();
+
+        let cancel_token = topic.cancel_token();
+        let (_sender, receiver) = topic.split().await.unwrap();
+
+        // Clone the receiver before shutdown, this survivor must not hang
+        let mut survivor = receiver.clone();
+
+        cancel_token.cancel();
+
+        // next() on a receiver that was alive before shutdown must return None,
+        // not hang. If the broadcast channel didn't close, this would block forever
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), survivor.next())
+            .await
+            .expect("next() hung after shutdown — broadcast channel didn't close");
+        assert!(result.is_none(), "expected None from next() after shutdown");
+
+        // joined() must also return None after shutdown
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), survivor.joined())
+            .await
+            .expect("joined() hung after shutdown — broadcast channel didn't close");
+        assert!(
+            result.is_none(),
+            "expected None from joined() after shutdown"
+        );
+
+        // A clone made after shutdown must also return None immediately
+        // (WeakSender::upgrade fails -> gets an already closed channel)
+        let mut late_clone = survivor.clone();
+
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), late_clone.next())
+            .await
+            .expect("next() hung on post shutdown clone, WeakSender upgrade should fail");
+        assert!(
+            result.is_none(),
+            "expected None from next() on post shutdown clone"
+        );
+
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), late_clone.joined())
+            .await
+            .expect("joined() hung on post shutdown clone, WeakSender upgrade should fail");
+        assert!(
+            result.is_none(),
+            "expected None from joined() on post shutdown clone"
+        );
+    }
+
     #[tokio::test]
     async fn test_topic_full_shutdown_on_drop() {
         let secret_key = iroh::SecretKey::generate(&mut rand::rng());
