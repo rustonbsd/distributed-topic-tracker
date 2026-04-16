@@ -38,10 +38,9 @@ impl Publisher {
         base_interval: Duration,
         max_jitter: Duration,
     ) -> Result<Self> {
-        let mut ticker = tokio::time::interval_at(
-            tokio::time::Instant::now() + initial_delay,
-            base_interval.max(Duration::from_secs(1)),
-        );
+        let base_interval = base_interval.max(Duration::from_secs(1));
+        let mut ticker =
+            tokio::time::interval_at(tokio::time::Instant::now() + initial_delay, base_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let api = Handle::spawn_with(
             PublisherActor {
@@ -49,7 +48,7 @@ impl Publisher {
                 gossip_receiver,
                 ticker,
                 cancel_token,
-                base_interval: base_interval.max(Duration::from_secs(1)),
+                base_interval,
                 max_jitter,
             },
             |mut actor, rx| async move { actor.run(rx).await },
