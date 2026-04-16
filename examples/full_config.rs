@@ -85,13 +85,13 @@ async fn main() -> Result<()> {
     let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
 
-    // Split into sink (sending) and stream (receiving)
     let record_publisher =
         RecordPublisher::builder(topic_id.clone(), signing_key.clone(), initial_secret)
             .config(config_builder())
             .secret_rotation(RotationHandle::new(DefaultSecretRotation))
             .build();
 
+    // Split into sink (sending) and stream (receiving)
     let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?;

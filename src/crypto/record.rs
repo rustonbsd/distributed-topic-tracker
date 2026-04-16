@@ -390,7 +390,7 @@ impl Record {
 
     /// Deserialize from bytes.
     pub fn from_bytes(buf: Vec<u8>) -> Result<Self> {
-        if buf.len() < 32 + 8 + 32 + 64 + 1 {
+        if buf.len() < 32 + 8 + 32 + 64 {
             bail!("buffer too short for Record deserialization")
         }
         let (topic, buf) = buf.split_at(32);

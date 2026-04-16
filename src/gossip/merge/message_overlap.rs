@@ -74,7 +74,12 @@ impl MessageOverlapMergeActor {
                 _ = self.ticker.tick() => {
                     tracing::debug!("MessageOverlapMerge: tick fired, checking for split-brain");
                     let _ = self.merge().await;
-                    let next_interval = (self.base_interval.as_millis() + if self.max_jitter.as_millis() > 0 { rand::random::<u128>() % self.max_jitter.as_millis() } else { 0 }).min(1000);
+                    let jitter_ms = if self.max_jitter.as_millis() > 0 {
+                        rand::random::<u128>() % self.max_jitter.as_millis()
+                    } else {
+                        0
+                    };
+                    let next_interval = (self.base_interval.as_millis() + jitter_ms).max(1000);
                     tracing::debug!("MessageOverlapMerge: next check in {}ms", next_interval);
                     self.ticker.reset_after(Duration::from_millis(next_interval as u64));
                 }

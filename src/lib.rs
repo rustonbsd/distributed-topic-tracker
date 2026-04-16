@@ -13,8 +13,8 @@ pub use gossip::{
 };
 
 pub use config::{
-    BubbleMergeConfig, Config, ConfigBuilder, DhtConfig, MergeConfig, MessageOverlapMergeConfig,
-    TimeoutConfig, TimeoutConfigBuilder, PublisherConfig, BootstrapConfig,
+    BootstrapConfig, BubbleMergeConfig, Config, ConfigBuilder, DhtConfig, MergeConfig,
+    MessageOverlapMergeConfig, PublisherConfig, TimeoutConfig, TimeoutConfigBuilder,
 };
 pub use crypto::{
     DefaultSecretRotation, EncryptedRecord, Record, RecordPublisher, RotationHandle,
@@ -39,5 +39,7 @@ pub const MAX_MESSAGE_HASHES: usize = 5;
 /// ```
 #[doc(hidden)]
 pub fn unix_minute(minute_offset: i64) -> u64 {
-    ((chrono::Utc::now().timestamp() / 60) + minute_offset) as u64
+    ((chrono::Utc::now().timestamp() / 60) + minute_offset)
+        .try_into()
+        .expect("timestamp overflow")
 }

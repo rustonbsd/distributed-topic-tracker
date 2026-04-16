@@ -98,7 +98,7 @@ impl RotationHandle {
 /// ```ignore
 /// let topic = TopicId::from_str("my-topic")?;
 /// let unix_minute = crate::unix_minute(0);
-/// let signing_key = signing_keypair(topic, unix_minute);
+/// let signing_key = signing_keypair(&topic, unix_minute);
 /// ```
 pub fn signing_keypair(topic_id: &TopicId, unix_minute: u64) -> ed25519_dalek::SigningKey {
     let mut sign_keypair_hash = sha2::Sha512::new();
@@ -119,7 +119,7 @@ pub fn signing_keypair(topic_id: &TopicId, unix_minute: u64) -> ed25519_dalek::S
 /// ```ignore
 /// let topic = TopicId::from_str("my-topic")?;
 /// let rotation = RotationHandle::default();
-/// let enc_key = encryption_keypair(topic, &rotation, initial_hash, 0);
+/// let enc_key = encryption_keypair(&topic, &rotation, initial_hash, 0);
 /// ```
 pub fn encryption_keypair(
     topic_id: &TopicId,

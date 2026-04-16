@@ -153,14 +153,13 @@ impl DhtActor {
 
             self.reset().await?;
 
-            let retry_interval = (self.config.base_retry_interval().as_millis()
-                + if self.config.max_retry_jitter().as_millis() > 0 {
-                    rand::random::<u128>() % self.config.max_retry_jitter().as_millis()
-                } else {
-                    0
-                })
-            .min(1000);
-        
+            let jitter_ms = if self.config.max_retry_jitter().as_millis() > 0 {
+                rand::random::<u128>() % self.config.max_retry_jitter().as_millis()
+            } else {
+                0
+            };
+            let retry_interval = (self.config.base_retry_interval().as_millis() + jitter_ms).max(1000);
+
             tracing::debug!(
                 "DHTActor: put_mutable attempt {}/{} failed, retrying in {}ms",
                 i + 1,

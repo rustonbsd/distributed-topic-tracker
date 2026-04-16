@@ -29,8 +29,6 @@ async fn main() -> Result<()> {
     let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
 
-    // Split into sink (sending) and stream (receiving)
-
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
         signing_key.clone(),
@@ -41,6 +39,7 @@ async fn main() -> Result<()> {
         Config::builder().merge_config(MergeConfig::new(BubbleMergeConfig::Disabled, MessageOverlapMergeConfig::Disabled)).build(),
     );
 
+    // Split into sink (sending) and stream (receiving)
     let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?;
