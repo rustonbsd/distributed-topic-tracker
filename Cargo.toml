@@ -43,10 +43,6 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "env-filter", "ansi"] }
 
 [[test]]
-name = "test_gossip"
-required-features = ["iroh-gossip"]
-
-[[test]]
 name = "tests"
 
 # only build examples if the "iroh-gossip" feature is enabled
