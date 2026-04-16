@@ -21,14 +21,14 @@ distributed-topic-tracker = "0.2"
 ```
 
 Basic iroh-gossip integration:
-```rust,no_run,ignore
+```rust,no_run
 use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 use ed25519_dalek::SigningKey;
 
 // Imports from distributed-topic-tracker
-use distributed_topic_tracker::{TopicId, AutoDiscoveryGossip, RecordPublisher};
+use distributed_topic_tracker::{TopicId, AutoDiscoveryGossip, RecordPublisher, Config};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -55,10 +55,10 @@ async fn main() -> Result<()> {
     let initial_secret = b"my-initial-secret".to_vec();
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        signing_key.verifying_key(),
         signing_key.clone(),
         None,
         initial_secret,
+        Config::default(),
     );
 
     // Use new `subscribe_and_join_with_auto_discovery` on Gossip

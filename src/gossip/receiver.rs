@@ -21,24 +21,37 @@ use crate::{MAX_MESSAGE_HASHES, Topic};
 pub struct GossipReceiver {
     api: Handle<GossipReceiverActor, anyhow::Error>,
     pub(crate) _topic_keep_alive: Option<Arc<Topic>>,
-    _next_channel_sender: tokio::sync::broadcast::Sender<
-        Option<iroh_gossip::api::Event>>,
-    next_channel_receiver: tokio::sync::broadcast::Receiver<
-        Option<iroh_gossip::api::Event>,
-    >,
-    _join_channel_sender: tokio::sync::broadcast::Sender<Option<()>>,
+    _next_channel_sender: tokio::sync::broadcast::WeakSender<Option<iroh_gossip::api::Event>>,
+    next_channel_receiver: tokio::sync::broadcast::Receiver<Option<iroh_gossip::api::Event>>,
+    _join_channel_sender: tokio::sync::broadcast::WeakSender<Option<()>>,
     join_channel_receiver: tokio::sync::broadcast::Receiver<Option<()>>,
 }
 
 impl Clone for GossipReceiver {
     fn clone(&self) -> Self {
+        let next_rx = match self._next_channel_sender.upgrade() {
+            Some(sender) => sender.subscribe(),
+            None => {
+                let (tx, rx) = tokio::sync::broadcast::channel(1);
+                drop(tx);
+                rx
+            }
+        };
+        let join_rx = match self._join_channel_sender.upgrade() {
+            Some(sender) => sender.subscribe(),
+            None => {
+                let (tx, rx) = tokio::sync::broadcast::channel(1);
+                drop(tx);
+                rx
+            }
+        };
         Self {
             api: self.api.clone(),
             _topic_keep_alive: self._topic_keep_alive.clone(),
             _next_channel_sender: self._next_channel_sender.clone(),
-            next_channel_receiver: self._next_channel_sender.subscribe(),
+            next_channel_receiver: next_rx,
             _join_channel_sender: self._join_channel_sender.clone(),
-            join_channel_receiver: self._join_channel_sender.subscribe(),
+            join_channel_receiver: join_rx,
         }
     }
 }
@@ -48,9 +61,7 @@ pub struct GossipReceiverActor {
     gossip_receiver: iroh_gossip::api::GossipReceiver,
     last_message_hashes: VecDeque<[u8; 32]>,
     cancel_token: tokio_util::sync::CancellationToken,
-    next_channel_sender: tokio::sync::broadcast::Sender<
-        Option<iroh_gossip::api::Event>,
-    >,
+    next_channel_sender: tokio::sync::broadcast::Sender<Option<iroh_gossip::api::Event>>,
     join_channel_sender: tokio::sync::broadcast::Sender<Option<()>>,
 }
 
@@ -78,9 +89,9 @@ impl GossipReceiver {
             api,
             _topic_keep_alive: None,
             next_channel_receiver: next_rx,
-            _next_channel_sender: next_tx,
+            _next_channel_sender: next_tx.downgrade(),
             join_channel_receiver: join_rx,
-            _join_channel_sender: join_tx,
+            _join_channel_sender: join_tx.downgrade(),
         }
     }
 
@@ -103,15 +114,15 @@ impl GossipReceiver {
     /// Receive the next gossip event.
     ///
     /// Returns `None` if the receiver is closed.
-    pub async fn next(
-        &mut self,
-    ) -> Option<iroh_gossip::api::Event> {
+    pub async fn next(&mut self) -> Option<iroh_gossip::api::Event> {
         match self.next_channel_receiver.recv().await {
             Ok(event) => event,
             Err(err) => match err {
                 tokio::sync::broadcast::error::RecvError::Closed => None,
                 tokio::sync::broadcast::error::RecvError::Lagged(skipped) => {
-                    tracing::warn!("GossipReceiver: event stream lagged, {skipped} events may have been missed");
+                    tracing::warn!(
+                        "GossipReceiver: event stream lagged, {skipped} events may have been missed"
+                    );
                     Box::pin(self.next()).await
                 }
             },
@@ -127,7 +138,9 @@ impl GossipReceiver {
             Err(err) => match err {
                 tokio::sync::broadcast::error::RecvError::Closed => None,
                 tokio::sync::broadcast::error::RecvError::Lagged(skipped) => {
-                    tracing::warn!("GossipReceiver: join event stream lagged, {skipped} events may have been missed");
+                    tracing::warn!(
+                        "GossipReceiver: join event stream lagged, {skipped} events may have been missed"
+                    );
                     Box::pin(self.joined()).await
                 }
             },

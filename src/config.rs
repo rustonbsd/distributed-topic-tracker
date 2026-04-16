@@ -165,6 +165,7 @@ impl Default for DhtConfig {
 }
 
 /// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
+/// base_interval is minimum 1s, max_jitter is minimum 0s. Default: enabled, 60s base, 120s jitter, 4 min neighbors.
 #[derive(Debug, Clone)]
 pub enum BubbleMergeConfig {
     Enabled {
@@ -176,6 +177,7 @@ pub enum BubbleMergeConfig {
 }
 
 /// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
+/// base_interval is minimum 1s, max_jitter is minimum 0s. Default: enabled, 60s base, 120s jitter.
 #[derive(Debug, Clone)]
 pub enum MessageOverlapMergeConfig {
     Enabled {
@@ -185,6 +187,8 @@ pub enum MessageOverlapMergeConfig {
     Disabled,
 }
 
+/// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
+/// base_interval is minimum 1s, max_jitter is minimum 0s. Default: enabled, 10s initial delay, 10s base interval, 50s jitter.
 #[derive(Debug, Clone)]
 pub enum PublisherConfig {
     Enabled {
@@ -196,6 +200,7 @@ pub enum PublisherConfig {
 }
 
 /// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
+/// base_interval is minimum 1s, max_jitter is minimum 0s.
 #[derive(Debug, Clone)]
 pub struct MergeConfig {
     bubble_merge: BubbleMergeConfig,
@@ -214,6 +219,8 @@ impl Default for PublisherConfig {
 
 impl MergeConfig {
     /// Defaults: bubble_merge=Enabled(60s base, 120s jitter, 4 min neighbors), message_overlap_merge=Enabled(60s base, 120s jitter).
+    /// Merge strategies run periodically in the background and attempt to merge split clusters by joining peers in DHT records and message hashes for bubble detection and merging, and by joining peers in DHT records with overlapping message hashes for message overlap detection and merging.
+    /// base_interval is minimum 1s, max_jitter is minimum 0s.
     pub fn new(
         bubble_merge: BubbleMergeConfig,
         message_overlap_merge: MessageOverlapMergeConfig,
@@ -225,11 +232,13 @@ impl MergeConfig {
     }
 
     /// Bubble merge strategy config. Default: enabled, 60s base, 120s jitter, 4 min neighbors.
+    /// base_interval is minimum 1s, max_jitter is minimum 0s.
     pub fn bubble_merge(&self) -> &BubbleMergeConfig {
         &self.bubble_merge
     }
 
     /// Message overlap merge strategy config. Default: enabled, 60s base, 120s jitter.
+    /// base_interval is minimum 1s, max_jitter is minimum 0s.
     pub fn message_overlap_merge(&self) -> &MessageOverlapMergeConfig {
         &self.message_overlap_merge
     }
@@ -382,6 +391,7 @@ impl Config {
     }
 
     /// Publisher strategy config. Default: enabled, 10s initial delay, 10s base interval, 50s jitter.
+    /// base_interval is minimum 1s, max_jitter is minimum 0s.
     pub fn publisher_config(&self) -> &PublisherConfig {
         &self.publisher_config
     }
@@ -448,6 +458,7 @@ impl ConfigBuilder {
     }
 
     /// Publisher strategy config. Default: enabled, 10s initial delay, 10s base interval, 50s jitter.
+    /// base_interval and initial_delay minimum is 1s, max_jitter is minimum 0s.
     pub fn publisher_config(mut self, publisher_config: PublisherConfig) -> Self {
         self.config.publisher_config = publisher_config;
         self
