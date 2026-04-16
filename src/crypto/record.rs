@@ -1,4 +1,4 @@
-use std::{collections::HashSet, str::FromStr, time::Duration};
+use std::collections::HashSet;
 
 use anyhow::{Result, bail};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
@@ -7,42 +7,7 @@ use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
-/// Topic identifier derived from a string via SHA512 hashing.
-///
-/// Used as a stable identifier for peer discovery records.
-///
-/// # Example
-///
-/// ```ignore
-/// let topic = RecordTopic::from_str("chat-app-v1")?;
-/// ```
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct RecordTopic([u8; 32]);
-
-impl FromStr for RecordTopic {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let mut hasher = sha2::Sha512::new();
-        hasher.update(s.as_bytes());
-        let hash: [u8; 32] = hasher.finalize()[..32]
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("hashing failed"))?;
-        Ok(RecordTopic(hash))
-    }
-}
-
-impl RecordTopic {
-    /// Create from a pre-computed 32-byte hash.
-    pub fn from_bytes(bytes: &[u8; 32]) -> Self {
-        Self(*bytes)
-    }
-
-    /// Get the raw 32-byte hash.
-    pub fn hash(&self) -> [u8; 32] {
-        self.0
-    }
-}
+use crate::{Config, TopicId};
 
 /// DHT record encrypted with HPKE.
 ///
@@ -98,29 +63,75 @@ impl RecordContent {
 pub struct RecordPublisher {
     dht: crate::dht::Dht,
 
-    record_topic: RecordTopic,
+    config: crate::config::Config,
+
+    topic_id: TopicId,
     pub_key: VerifyingKey,
     signing_key: SigningKey,
     secret_rotation: Option<crate::crypto::keys::RotationHandle>,
     initial_secret_hash: [u8; 32],
 }
 
+#[derive(Debug)]
+pub struct RecordPublisherBuilder {
+    topic_id: TopicId,
+    signing_key: SigningKey,
+    secret_rotation: Option<crate::crypto::keys::RotationHandle>,
+    initial_secret: Vec<u8>,
+    config: crate::config::Config,
+}
+
+impl RecordPublisherBuilder {
+    pub fn secret_rotation(mut self, secret_rotation: crate::crypto::keys::RotationHandle) -> Self {
+        self.secret_rotation = Some(secret_rotation);
+        self
+    }
+
+    pub fn config(mut self, config: crate::config::Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn build(self) -> RecordPublisher {
+        RecordPublisher::new(
+            self.topic_id,
+            self.signing_key,
+            self.secret_rotation,
+            self.initial_secret,
+            self.config,
+        )
+    }
+}
+
 impl RecordPublisher {
+    pub fn builder(
+        topic_id: impl Into<TopicId>,
+        signing_key: SigningKey,
+        initial_secret: impl Into<Vec<u8>>,
+    ) -> RecordPublisherBuilder {
+        RecordPublisherBuilder {
+            topic_id: topic_id.into(),
+            signing_key,
+            secret_rotation: None,
+            initial_secret: initial_secret.into(),
+            config: crate::config::Config::default(),
+        }
+    }
+
     /// Create a new record publisher.
     ///
     /// # Arguments
     ///
-    /// * `record_topic` - Topic identifier
-    /// * `pub_key` - Ed25519 public key (verifying key)
+    /// * `topic_id` - Topic identifier
     /// * `signing_key` - Ed25519 secret key (signing key)
     /// * `secret_rotation` - Optional custom key rotation strategy
     /// * `initial_secret` - Initial secret for key derivation
     pub fn new(
-        record_topic: impl Into<RecordTopic>,
-        pub_key: VerifyingKey,
+        topic_id: impl Into<TopicId>,
         signing_key: SigningKey,
         secret_rotation: Option<crate::crypto::keys::RotationHandle>,
         initial_secret: Vec<u8>,
+        config: crate::config::Config,
     ) -> Self {
         let mut initial_secret_hash = sha2::Sha512::new();
         initial_secret_hash.update(initial_secret);
@@ -129,9 +140,10 @@ impl RecordPublisher {
             .expect("hashing failed");
 
         Self {
-            dht: crate::dht::Dht::new(),
-            record_topic: record_topic.into(),
-            pub_key,
+            dht: crate::dht::Dht::new(config.dht_config()),
+            config,
+            topic_id: topic_id.into(),
+            pub_key: signing_key.verifying_key(),
             signing_key,
             secret_rotation,
             initial_secret_hash,
@@ -150,9 +162,8 @@ impl RecordPublisher {
         record_content: impl Serialize + Deserialize<'a>,
     ) -> Result<Record> {
         Record::sign(
-            self.record_topic.hash(),
+            self.topic_id.hash(),
             unix_minute,
-            self.pub_key.to_bytes(),
             record_content,
             &self.signing_key,
         )
@@ -164,13 +175,13 @@ impl RecordPublisher {
     }
 
     /// Get the record topic.
-    pub fn record_topic(&self) -> RecordTopic {
-        self.record_topic
+    pub fn topic_id(&self) -> &TopicId {
+        &self.topic_id
     }
 
     /// Get the signing key.
-    pub fn signing_key(&self) -> ed25519_dalek::SigningKey {
-        self.signing_key.clone()
+    pub fn signing_key(&self) -> &ed25519_dalek::SigningKey {
+        &self.signing_key
     }
 
     /// Get the secret rotation handle if set.
@@ -181,6 +192,10 @@ impl RecordPublisher {
     /// Get the initial secret hash.
     pub fn initial_secret_hash(&self) -> [u8; 32] {
         self.initial_secret_hash
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 }
 
@@ -203,19 +218,19 @@ impl RecordPublisher {
             record.unix_minute()
         );
 
-        if records.len() >= crate::MAX_BOOTSTRAP_RECORDS {
+        if records.len() >= self.config.bootstrap_config().max_bootstrap_records().max(1) {
             tracing::debug!(
                 "RecordPublisher: max records reached ({}), skipping publish",
-                crate::MAX_BOOTSTRAP_RECORDS
+                self.config.bootstrap_config().max_bootstrap_records()
             );
             return Ok(());
         }
 
         // Publish own records
-        let sign_key = crate::crypto::keys::signing_keypair(self.record_topic, record.unix_minute);
-        let salt = crate::crypto::keys::salt(self.record_topic, record.unix_minute);
+        let sign_key = crate::crypto::keys::signing_keypair(self.topic_id(), record.unix_minute);
+        let salt = crate::crypto::keys::salt(self.topic_id(), record.unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            self.record_topic,
+            self.topic_id(),
             &self.secret_rotation.clone().unwrap_or_default(),
             self.initial_secret_hash,
             record.unix_minute,
@@ -233,8 +248,6 @@ impl RecordPublisher {
                 sign_key.verifying_key(),
                 Some(salt.to_vec()),
                 encrypted_record.to_bytes().to_vec(),
-                Some(3),
-                Duration::from_secs(10),
             )
             .await?;
 
@@ -251,14 +264,14 @@ impl RecordPublisher {
             unix_minute
         );
 
-        let topic_sign = crate::crypto::keys::signing_keypair(self.record_topic, unix_minute);
+        let topic_sign = crate::crypto::keys::signing_keypair(self.topic_id(), unix_minute);
         let encryption_key = crate::crypto::keys::encryption_keypair(
-            self.record_topic,
+            self.topic_id(),
             &self.secret_rotation.clone().unwrap_or_default(),
             self.initial_secret_hash,
             unix_minute,
         );
-        let salt = crate::crypto::keys::salt(self.record_topic, unix_minute);
+        let salt = crate::crypto::keys::salt(self.topic_id(), unix_minute);
 
         // Get records, decrypt and verify
         let records_iter = self
@@ -267,7 +280,6 @@ impl RecordPublisher {
                 topic_sign.verifying_key(),
                 Some(salt.to_vec()),
                 None,
-                Duration::from_secs(10),
             )
             .await
             .unwrap_or_default();
@@ -282,7 +294,7 @@ impl RecordPublisher {
             .filter_map(
                 |record| match EncryptedRecord::from_bytes(record.value().to_vec()) {
                     Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
-                        Ok(record) => match record.verify(&self.record_topic.hash(), unix_minute) {
+                        Ok(record) => match record.verify(&self.topic_id.hash(), unix_minute) {
                             Ok(_) => match record.node_id().eq(self.pub_key.as_bytes()) {
                                 true => {
                                     tracing::debug!("RecordPublisher: filtered out self");
@@ -333,8 +345,15 @@ impl EncryptedRecord {
 
     /// Deserialize from bytes.
     pub fn from_bytes(buf: Vec<u8>) -> Result<Self> {
+        if buf.len() < 4 {
+            bail!("buffer too short for EncryptedRecord deserialization")
+        }
         let (encrypted_record_len, buf) = buf.split_at(4);
         let encrypted_record_len = u32::from_le_bytes(encrypted_record_len.try_into()?);
+        
+        if buf.len() != encrypted_record_len as usize + 88 /* encrypted_decryption_key.len() == 88 */ {
+            bail!("buffer length does not match expected encrypted record length")
+        }
         let (encrypted_record, encrypted_decryption_key) =
             buf.split_at(encrypted_record_len as usize);
 
@@ -350,7 +369,6 @@ impl Record {
     pub fn sign<'a>(
         topic: [u8; 32],
         unix_minute: u64,
-        node_id: [u8; 32],
         record_content: impl Serialize + Deserialize<'a>,
         signing_key: &ed25519_dalek::SigningKey,
     ) -> anyhow::Result<Self> {
@@ -358,14 +376,13 @@ impl Record {
         let mut signature_data = Vec::new();
         signature_data.extend_from_slice(&topic);
         signature_data.extend_from_slice(&unix_minute.to_le_bytes());
-        signature_data.extend_from_slice(&node_id);
+        signature_data.extend_from_slice(&signing_key.verifying_key().to_bytes());
         signature_data.extend(&record_content.clone().0);
-        let signing_key = signing_key.clone();
         let signature = signing_key.sign(&signature_data);
         Ok(Self {
             topic,
             unix_minute,
-            pub_key: node_id,
+            pub_key: signing_key.verifying_key().to_bytes(),
             content: record_content,
             signature: signature.to_bytes(),
         })
@@ -373,6 +390,9 @@ impl Record {
 
     /// Deserialize from bytes.
     pub fn from_bytes(buf: Vec<u8>) -> Result<Self> {
+        if buf.len() < 32 + 8 + 32 + 64 + 1 {
+            bail!("buffer too short for Record deserialization")
+        }
         let (topic, buf) = buf.split_at(32);
         let (unix_minute, buf) = buf.split_at(8);
         let (node_id, buf) = buf.split_at(32);

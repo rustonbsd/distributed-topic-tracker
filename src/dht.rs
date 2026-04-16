@@ -11,7 +11,7 @@ use ed25519_dalek::VerifyingKey;
 use futures_lite::StreamExt;
 use mainline::{MutableItem, SigningKey};
 
-const RETRY_DEFAULT: usize = 3;
+use crate::config::DhtConfig;
 
 /// DHT client wrapper with actor-based concurrency.
 ///
@@ -25,15 +25,20 @@ pub struct Dht {
 #[derive(Debug, Default)]
 struct DhtActor {
     dht: Option<mainline::async_dht::AsyncDht>,
+    config: crate::config::DhtConfig,
 }
 
 impl Dht {
     /// Create a new DHT client.
     ///
     /// Spawns a background actor for handling DHT operations.
-    pub fn new() -> Self {
+    pub fn new(dht_config: &DhtConfig) -> Self {
         Self {
-            api: Handle::spawn(DhtActor::default()).0,
+            api: Handle::spawn(DhtActor {
+                dht: None,
+                config: dht_config.clone(),
+            })
+            .0,
         }
     }
 
@@ -50,10 +55,9 @@ impl Dht {
         pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         more_recent_than: Option<i64>,
-        timeout: Duration,
     ) -> Result<Vec<MutableItem>> {
         self.api
-            .call(act!(actor => actor.get(pub_key, salt, more_recent_than, timeout)))
+            .call(act!(actor => actor.get(pub_key, salt, more_recent_than)))
             .await
     }
 
@@ -73,16 +77,10 @@ impl Dht {
         pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         data: Vec<u8>,
-        retry_count: Option<usize>,
-        timeout: Duration,
     ) -> Result<()> {
-        self.api.call(act!(actor => actor.put_mutable(signing_key, pub_key, salt, data, retry_count, timeout))).await
-    }
-}
-
-impl Default for Dht {
-    fn default() -> Self {
-        Self::new()
+        self.api
+            .call(act!(actor => actor.put_mutable(signing_key, pub_key, salt, data)))
+            .await
     }
 }
 
@@ -92,7 +90,6 @@ impl DhtActor {
         pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         more_recent_than: Option<i64>,
-        timeout: Duration,
     ) -> Result<Vec<MutableItem>> {
         if self.dht.is_none() {
             self.reset().await?;
@@ -100,7 +97,7 @@ impl DhtActor {
 
         let dht = self.dht.as_mut().context("DHT not initialized")?;
         Ok(tokio::time::timeout(
-            timeout,
+            self.config.get_timeout(),
             dht.get_mutable(pub_key.as_bytes(), salt.as_deref(), more_recent_than)
                 .collect::<Vec<_>>(),
         )
@@ -113,18 +110,16 @@ impl DhtActor {
         pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         data: Vec<u8>,
-        retry_count: Option<usize>,
-        timeout: Duration,
     ) -> Result<()> {
         if self.dht.is_none() {
             self.reset().await?;
         }
 
-        for i in 0..retry_count.unwrap_or(RETRY_DEFAULT) {
+        for i in 0..1+self.config.retries() {
             let dht = self.dht.as_mut().context("DHT not initialized")?;
 
             let most_recent_result = tokio::time::timeout(
-                timeout,
+                self.config.put_timeout(),
                 dht.get_mutable_most_recent(pub_key.as_bytes(), salt.as_deref()),
             )
             .await?;
@@ -141,7 +136,7 @@ impl DhtActor {
             };
 
             let put_result = match tokio::time::timeout(
-                Duration::from_secs(10),
+                self.config.put_timeout(),
                 dht.put_mutable(item.clone(), Some(item.seq())),
             )
             .await
@@ -152,13 +147,25 @@ impl DhtActor {
 
             if put_result.is_some() {
                 break;
-            } else if i == retry_count.unwrap_or(RETRY_DEFAULT) - 1 {
+            } else if i == self.config.retries() {
                 bail!("failed to publish record")
             }
 
             self.reset().await?;
 
-            tokio::time::sleep(Duration::from_millis(rand::random::<u64>() % 2000)).await;
+            let retry_interval = self.config.base_retry_interval()
+                + Duration::from_millis(if self.config.max_retry_jitter().as_millis() > 0 {
+                    rand::random::<u64>() % self.config.max_retry_jitter().as_millis() as u64
+                } else {
+                    0
+                });
+            tracing::debug!(
+                "DHTActor: put_mutable attempt {}/{} failed, retrying in {:?}",
+                i + 1,
+                1 + self.config.retries(),
+                retry_interval
+            );
+            tokio::time::sleep(retry_interval).await;
         }
         Ok(())
     }

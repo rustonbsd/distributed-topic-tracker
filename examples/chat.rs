@@ -5,7 +5,9 @@ use iroh_gossip::{api::Event, net::Gossip};
 use ed25519_dalek::SigningKey;
 
 // Imports from distributed-topic-tracker
-use distributed_topic_tracker::{AutoDiscoveryGossip, RecordPublisher, TopicId};
+use distributed_topic_tracker::{
+    AutoDiscoveryGossip, Config, RecordPublisher, TopicId,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -44,14 +46,14 @@ async fn main() -> Result<()> {
 
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
-        signing_key.verifying_key(),
         signing_key.clone(),
         None,
         initial_secret,
+        Config::default(),
     );
 
     // Split into sink (sending) and stream (receiving)
-    let (gossip_sender, gossip_receiver) = gossip
+    let (gossip_sender, mut gossip_receiver) = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?
         .split()
@@ -61,7 +63,7 @@ async fn main() -> Result<()> {
 
     // Spawn listener for incoming messages
     tokio::spawn(async move {
-        while let Some(Ok(event)) = gossip_receiver.next().await {
+        while let Some(event) = gossip_receiver.next().await {
             if let Event::Received(msg) = event {
                 println!(
                     "\nMessage from {}: {}",
