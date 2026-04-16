@@ -23,9 +23,9 @@ use crate::{MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher};
 /// and recently seen message hashes for cluster merging.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GossipRecordContent {
-    /// Fixed array of 5 peer node IDs (as 32-byte arrays, empty slots are zero-filled)
+    /// Fixed array of MAX_RECORD_PEERS peer node IDs (as 32-byte arrays, empty slots are zero-filled)
     pub active_peers: [[u8; 32]; MAX_RECORD_PEERS],
-    /// Fixed array of 5 recent message hashes for overlap detection (empty slots are zero-filled)
+    /// Fixed array of MAX_MESSAGE_HASHES recent message hashes for overlap detection (empty slots are zero-filled)
     pub last_message_hashes: [[u8; 32]; MAX_MESSAGE_HASHES],
 }
 

@@ -115,7 +115,7 @@ impl DhtActor {
             self.reset().await?;
         }
 
-        for i in 0..1+self.config.retries() {
+        for i in 0..1 + self.config.retries() {
             let dht = self.dht.as_mut().context("DHT not initialized")?;
 
             let most_recent_result = tokio::time::timeout(
@@ -153,19 +153,21 @@ impl DhtActor {
 
             self.reset().await?;
 
-            let retry_interval = self.config.base_retry_interval()
-                + Duration::from_millis(if self.config.max_retry_jitter().as_millis() > 0 {
-                    rand::random::<u64>() % self.config.max_retry_jitter().as_millis() as u64
+            let retry_interval = (self.config.base_retry_interval().as_millis()
+                + if self.config.max_retry_jitter().as_millis() > 0 {
+                    rand::random::<u128>() % self.config.max_retry_jitter().as_millis()
                 } else {
                     0
-                });
+                })
+            .min(1000);
+        
             tracing::debug!(
-                "DHTActor: put_mutable attempt {}/{} failed, retrying in {:?}",
+                "DHTActor: put_mutable attempt {}/{} failed, retrying in {}ms",
                 i + 1,
                 1 + self.config.retries(),
                 retry_interval
             );
-            tokio::time::sleep(retry_interval).await;
+            tokio::time::sleep(Duration::from_millis(retry_interval as u64)).await;
         }
         Ok(())
     }

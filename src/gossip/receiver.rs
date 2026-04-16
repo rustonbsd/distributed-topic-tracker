@@ -161,12 +161,14 @@ impl GossipReceiverActor {
                             tracing::debug!("GossipReceiver: gossip receiver closed");
                             self.join_channel_sender.send(None).ok();
                             self.next_channel_sender.send(None).ok();
+                            self.cancel_token.cancel();
                             break Ok(());
                         }
                         Some(Err(err)) => {
                             tracing::warn!("GossipReceiver: error receiving gossip event: {err}");
                             self.next_channel_sender.send(None).ok();
                             self.join_channel_sender.send(None).ok();
+                            self.cancel_token.cancel();
                             break Ok(());
                         }
                         Some(Ok(ref event)) => {

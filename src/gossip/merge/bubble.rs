@@ -83,9 +83,9 @@ impl BubbleMergeActor {
                 _ = self.ticker.tick() => {
                     tracing::debug!("BubbleMerge: tick fired, checking for bubbles");
                     let _ = self.merge().await;
-                    let next_interval = self.base_interval.as_secs() + if self.max_jitter.as_secs() > 0 { rand::random::<u64>() % self.max_jitter.as_secs() } else {0};
-                    tracing::debug!("BubbleMerge: next check in {}s", next_interval);
-                    self.ticker.reset_after(Duration::from_secs(next_interval));
+                    let next_interval = (self.base_interval.as_millis() + if self.max_jitter.as_millis() > 0 { rand::random::<u128>() % self.max_jitter.as_millis() } else { 0 }).min(1000);
+                    tracing::debug!("BubbleMerge: next check in {}ms", next_interval);
+                    self.ticker.reset_after(Duration::from_millis(next_interval as u64));
                 }
                 _ = self.cancel_token.cancelled() => {
                     break Ok(());

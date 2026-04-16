@@ -209,8 +209,7 @@ fn test_topic_encryption_keypair_deterministic() {
     assert_eq!(key1.to_bytes(), key2.to_bytes());
 
     // Different unix_minute should produce different keypair
-    let key3 =
-        crate::encryption_keypair(&topic_id, &rotation, initial_secret_hash, unix_minute + 1);
+    let key3 = encryption_keypair(&topic_id, &rotation, initial_secret_hash, unix_minute + 1);
     assert_ne!(key1.to_bytes(), key3.to_bytes());
 }
 
