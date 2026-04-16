@@ -243,6 +243,7 @@ pub struct BootstrapConfig {
     join_confirmation_wait_time: Duration,
     discovery_poll_interval: Duration,
     publish_record_on_startup: bool,
+    check_last_minute_record_first_on_startup: bool,
 }
 
 impl Default for BootstrapConfig {
@@ -254,6 +255,7 @@ impl Default for BootstrapConfig {
             join_confirmation_wait_time: Duration::from_millis(500),
             discovery_poll_interval: Duration::from_millis(2000),
             publish_record_on_startup: true,
+            check_last_minute_record_first_on_startup: false,
         }
     }
 }
@@ -300,6 +302,15 @@ impl BootstrapConfigBuilder {
         self
     }
 
+    /// Whether to check the last minute record unix_minute-1 before the current time window unix_minute on startup.  Default: false.
+    /// 
+    /// If joining longer running, existing topics is priority, set to true.
+    /// If minimizing bootstrap time for cluster cold starts (2+ nodes starting roughly at the same time into a topic without peers), set to false.
+    pub fn check_last_minute_record_first_on_startup(mut self, check: bool) -> Self {
+        self.config.check_last_minute_record_first_on_startup = check;
+        self
+    }
+
     pub fn build(self) -> BootstrapConfig {
         self.config
     }
@@ -340,6 +351,14 @@ impl BootstrapConfig {
     /// Whether to publish a bootstrap record unconditionally on startup before dht get. Default: true.
     pub fn publish_record_on_startup(&self) -> bool {
         self.publish_record_on_startup
+    }
+
+    /// Whether to check the last minute record unix_minute-1 before the current time window unix_minute on startup.  Default: false.
+    /// 
+    /// If joining longer running, existing topics is priority, set to true.
+    /// If minimizing bootstrap time for cluster cold starts (2+ nodes starting roughly at the same time into a topic without peers), set to false.
+    pub fn check_last_minute_record_first_on_startup(&self) -> bool {
+        self.check_last_minute_record_first_on_startup
     }
 }
 

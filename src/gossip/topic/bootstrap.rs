@@ -102,7 +102,12 @@ impl BootstrapActor {
             if self.config.publish_record_on_startup() {
                 let unix_minute = crate::unix_minute(0);
                 tracing::debug!("Bootstrap: initial startup record publish {}", unix_minute);
-                last_published_unix_minute = unix_minute;
+                last_published_unix_minute =
+                    if self.config.check_last_minute_record_first_on_startup() {
+                        0
+                    } else {
+                        unix_minute
+                    };
                 let record_creator = record_publisher.clone();
                 let record_content = GossipRecordContent {
                     active_peers: [[0; 32]; MAX_RECORD_PEERS],
@@ -137,11 +142,15 @@ impl BootstrapActor {
                     }
 
                     // On the first try we check the prev unix minute, after that the current one
-                    let unix_minute = crate::unix_minute(if last_published_unix_minute == 0 {
-                        -1
-                    } else {
-                        0
-                    });
+                    let unix_minute = crate::unix_minute(
+                        if last_published_unix_minute == 0
+                            && bootstrap_config.check_last_minute_record_first_on_startup()
+                        {
+                            -1
+                        } else {
+                            0
+                        },
+                    );
 
                     // Unique, verified records for the unix minute
                     let mut records = record_publisher.get_records(unix_minute - 1).await;

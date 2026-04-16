@@ -29,6 +29,7 @@ fn config_builder() -> Config {
             BootstrapConfig::builder()
                 .max_bootstrap_records(5)
                 .publish_record_on_startup(true)
+                .check_last_minute_record_first_on_startup(false)
                 .discovery_poll_interval(Duration::from_millis(2000))
                 .no_peers_retry_interval(Duration::from_millis(1500))
                 .per_peer_join_settle_time(Duration::from_millis(100))
