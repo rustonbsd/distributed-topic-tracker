@@ -8,7 +8,7 @@ use iroh::EndpointId;
 use tokio::time::sleep;
 
 use crate::{
-    GossipSender, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS,
+    GossipSender, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher,
     config::BootstrapConfig,
     crypto::Record,
     gossip::{GossipRecordContent, receiver::GossipReceiver},
@@ -119,9 +119,7 @@ impl BootstrapActor {
                     record_content,
                     record_publisher.signing_key(),
                 ) {
-                    tokio::spawn(async move {
-                        let _ = record_creator.publish_record(record).await;
-                    });
+                    publish_record_fire_and_forget(record_creator, record);
                 }
             }
 
@@ -182,9 +180,7 @@ impl BootstrapActor {
                                 record_content,
                                 record_publisher.signing_key(),
                             ) {
-                                tokio::spawn(async move {
-                                    let _ = record_creator.publish_record(record).await;
-                                });
+                                publish_record_fire_and_forget(record_creator, record);
                             }
                         }
                         tokio::select! {
@@ -325,9 +321,7 @@ impl BootstrapActor {
                                 },
                                 record_publisher.signing_key(),
                             ) {
-                                tokio::spawn(async move {
-                                    let _ = record_creator.publish_record(record).await;
-                                });
+                                publish_record_fire_and_forget(record_creator, record);
                             }
                         }
                         tokio::select! {
@@ -351,4 +345,12 @@ impl BootstrapActor {
 
         Ok(receiver)
     }
+}
+
+fn publish_record_fire_and_forget(record_publisher: RecordPublisher, record: Record) {
+    tokio::spawn(async move {
+        if let Err(err) = record_publisher.publish_record(record).await {
+            tracing::warn!("Failed to publish record: {:?}", err);
+        }
+    });
 }

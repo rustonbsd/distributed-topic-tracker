@@ -72,6 +72,7 @@ pub struct RecordPublisher {
     initial_secret_hash: [u8; 32],
 }
 
+/// Builder for `RecordPublisher`.
 #[derive(Debug)]
 pub struct RecordPublisherBuilder {
     topic_id: TopicId,
@@ -82,16 +83,19 @@ pub struct RecordPublisherBuilder {
 }
 
 impl RecordPublisherBuilder {
+    /// Set a custom secret rotation strategy.
     pub fn secret_rotation(mut self, secret_rotation: crate::crypto::keys::RotationHandle) -> Self {
         self.secret_rotation = Some(secret_rotation);
         self
     }
 
+    /// Set the configuration.
     pub fn config(mut self, config: crate::config::Config) -> Self {
         self.config = config;
         self
     }
 
+    /// Build the `RecordPublisher`.
     pub fn build(self) -> RecordPublisher {
         RecordPublisher::new(
             self.topic_id,
@@ -104,6 +108,7 @@ impl RecordPublisherBuilder {
 }
 
 impl RecordPublisher {
+    /// Create a new `RecordPublisherBuilder`.
     pub fn builder(
         topic_id: impl Into<TopicId>,
         signing_key: SigningKey,
@@ -126,15 +131,16 @@ impl RecordPublisher {
     /// * `signing_key` - Ed25519 secret key (signing key)
     /// * `secret_rotation` - Optional custom key rotation strategy
     /// * `initial_secret` - Initial secret for key derivation
+    /// * `config` - Configuration settings
     pub fn new(
         topic_id: impl Into<TopicId>,
         signing_key: SigningKey,
         secret_rotation: Option<crate::crypto::keys::RotationHandle>,
-        initial_secret: Vec<u8>,
+        initial_secret: impl Into<Vec<u8>>,
         config: crate::config::Config,
     ) -> Self {
         let mut initial_secret_hash = sha2::Sha512::new();
-        initial_secret_hash.update(initial_secret);
+        initial_secret_hash.update(initial_secret.into());
         let initial_secret_hash: [u8; 32] = initial_secret_hash.finalize()[..32]
             .try_into()
             .expect("hashing failed");
@@ -174,7 +180,7 @@ impl RecordPublisher {
         self.pub_key
     }
 
-    /// Get the record topic.
+    /// Get TopicId.
     pub fn topic_id(&self) -> &TopicId {
         &self.topic_id
     }
@@ -194,6 +200,7 @@ impl RecordPublisher {
         self.initial_secret_hash
     }
 
+    /// Get the configuration.
     pub fn config(&self) -> &Config {
         &self.config
     }
@@ -203,7 +210,7 @@ impl RecordPublisher {
     /// Publish a record to the DHT if slot capacity allows.
     ///
     /// Checks existing record count for this time slot and skips publishing if
-    /// `MAX_BOOTSTRAP_RECORDS` limit reached.
+    /// `self.config.bootstrap_config().max_bootstrap_records()` limit reached.
     pub async fn publish_record(&self, record: Record) -> Result<()> {
         let records = self
             .get_records(record.unix_minute())
@@ -218,7 +225,7 @@ impl RecordPublisher {
             record.unix_minute()
         );
 
-        if records.len() >= self.config.bootstrap_config().max_bootstrap_records().max(1) {
+        if records.len() >= self.config.bootstrap_config().max_bootstrap_records() {
             tracing::debug!(
                 "RecordPublisher: max records reached ({}), skipping publish",
                 self.config.bootstrap_config().max_bootstrap_records()
@@ -296,10 +303,7 @@ impl RecordPublisher {
                     Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
                         Ok(record) => match record.verify(&self.topic_id.hash(), unix_minute) {
                             Ok(_) => match record.node_id().eq(self.pub_key.as_bytes()) {
-                                true => {
-                                    tracing::debug!("RecordPublisher: filtered out self");
-                                    None
-                                }
+                                true => None,
                                 false => Some(record),
                             },
                             Err(_) => None,

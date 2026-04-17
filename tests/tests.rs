@@ -23,14 +23,14 @@ fn test_record_serialization_roundtrip() {
     };
 
     let record = Record::sign(topic, unix_minute, record_content.clone(), &signing_key)
-        .expect("Failed to sign record");
+        .expect("failed to sign record");
 
     // Test serialization roundtrip
     let bytes = record.to_bytes();
-    let deserialized = Record::from_bytes(bytes).expect("Failed to deserialize record");
+    let deserialized = Record::from_bytes(bytes).expect("failed to deserialize record");
 
     let deserialized_content: GossipRecordContent =
-        deserialized.content().expect("Failed to get content");
+        deserialized.content().expect("failed to get content");
 
     assert_eq!(record.topic(), deserialized.topic());
     assert_eq!(record.unix_minute(), deserialized.unix_minute());
@@ -59,7 +59,8 @@ fn test_record_verification() {
         last_message_hashes,
     };
 
-    let record = Record::sign(topic, unix_minute, record_content, &signing_key).unwrap();
+    let record = Record::sign(topic, unix_minute, record_content, &signing_key)
+        .expect("failed to sign record");
 
     // Valid verification should pass
     assert!(record.verify(&topic, unix_minute).is_ok());
@@ -87,14 +88,16 @@ fn test_encrypted_record_roundtrip() {
     };
 
     let record = Record::sign(topic, unix_minute, record_content.clone(), &signing_key)
-        .expect("Failed to sign record");
+        .expect("failed to sign record");
 
     // Test encryption/decryption roundtrip
     let encrypted = record.encrypt(&encryption_key);
-    let decrypted = encrypted.decrypt(&encryption_key).unwrap();
+    let decrypted = encrypted
+        .decrypt(&encryption_key)
+        .expect("failed to decrypt record");
 
     let deserialized_content: GossipRecordContent =
-        decrypted.content().expect("Failed to get content");
+        decrypted.content().expect("failed to get content");
 
     assert_eq!(record.topic(), decrypted.topic());
     assert_eq!(record.unix_minute(), decrypted.unix_minute());
@@ -125,19 +128,19 @@ fn test_encrypted_record_serialization() {
     };
 
     let record = Record::sign(topic, unix_minute, record_content, &signing_key)
-        .expect("Failed to sign record");
+        .expect("failed to sign record");
 
     let encrypted = record.encrypt(&encryption_key);
 
     // Test serialization roundtrip
     let bytes = encrypted.to_bytes();
     let deserialized =
-        EncryptedRecord::from_bytes(bytes).expect("Failed to deserialize encrypted record");
+        EncryptedRecord::from_bytes(bytes).expect("failed to deserialize encrypted record");
 
     // Should be able to decrypt the deserialized version
     let decrypted = deserialized
         .decrypt(&encryption_key)
-        .expect("Failed to decrypt record");
+        .expect("failed to decrypt record");
     assert_eq!(record.topic(), decrypted.topic());
     assert_eq!(record.unix_minute(), decrypted.unix_minute());
 }
@@ -181,7 +184,7 @@ fn test_unix_minute_function() {
 
 #[test]
 fn test_topic_signing_keypair_deterministic() {
-    let topic_id = TopicId::from_str("test-topic").unwrap();
+    let topic_id = TopicId::from_str("test-topic").expect("failed to create TopicId from_str");
     let unix_minute = 12345u64;
 
     let key1 = signing_keypair(&topic_id, unix_minute);
@@ -197,7 +200,7 @@ fn test_topic_signing_keypair_deterministic() {
 
 #[test]
 fn test_topic_encryption_keypair_deterministic() {
-    let topic_id = TopicId::from_str("test-topic").unwrap();
+    let topic_id = TopicId::from_str("test-topic").expect("failed to create TopicId from_str");
     let unix_minute = 12345u64;
     let initial_secret_hash = [1u8; 32];
     let rotation = RotationHandle::new(DefaultSecretRotation);
@@ -215,7 +218,7 @@ fn test_topic_encryption_keypair_deterministic() {
 
 #[test]
 fn test_topic_salt_deterministic() {
-    let topic_id = TopicId::from_str("test-topic").unwrap();
+    let topic_id = TopicId::from_str("test-topic").expect("failed to create TopicId from_str");
     let unix_minute = 12345u64;
 
     let salt1 = salt(&topic_id, unix_minute);
@@ -266,7 +269,7 @@ async fn test_multiple_receivers_all_get_events() {
         .secret_key(secret_a)
         .bind()
         .await
-        .unwrap();
+        .expect("failed to bind endpoint A");
     let gossip_a = iroh_gossip::net::Gossip::builder().spawn(endpoint_a.clone());
     let _router_a = iroh::protocol::Router::builder(endpoint_a.clone())
         .accept(iroh_gossip::ALPN, gossip_a.clone())
@@ -283,8 +286,8 @@ async fn test_multiple_receivers_all_get_events() {
     let topic_a = gossip_a
         .subscribe_and_join_with_auto_discovery_no_wait(rp_a)
         .await
-        .unwrap();
-    let (sender_a, mut receiver_a) = topic_a.split().await.unwrap();
+        .expect("failed to subscribe and join topic A");
+    let (sender_a, mut receiver_a) = topic_a.split().await.expect("failed to split topic A");
 
     // Peer B
     let secret_b = iroh::SecretKey::generate(&mut rand::rng());
@@ -293,7 +296,7 @@ async fn test_multiple_receivers_all_get_events() {
         .secret_key(secret_b)
         .bind()
         .await
-        .unwrap();
+        .expect("failed to bind endpoint B");
     let gossip_b = iroh_gossip::net::Gossip::builder().spawn(endpoint_b.clone());
     let _router_b = iroh::protocol::Router::builder(endpoint_b.clone())
         .accept(iroh_gossip::ALPN, gossip_b.clone())
@@ -310,21 +313,27 @@ async fn test_multiple_receivers_all_get_events() {
     let topic_b = gossip_b
         .subscribe_and_join_with_auto_discovery(rp_b)
         .await
-        .unwrap();
-    let (sender_b, mut receiver_b) = topic_b.split().await.unwrap();
+        .expect("failed to subscribe and join topic B");
+    let (sender_b, mut receiver_b) = topic_b.split().await.expect("failed to split topic B");
 
     // Join peers
     sender_a
         .join_peers(vec![endpoint_b.id()], None)
         .await
-        .unwrap();
+        .expect("failed to join peers from sender A");
     sender_b
         .join_peers(vec![endpoint_a.id()], None)
         .await
-        .unwrap();
+        .expect("failed to join peers from sender B");
 
-    receiver_a.joined().await.unwrap();
-    receiver_b.joined().await.unwrap();
+    receiver_a
+        .joined()
+        .await
+        .expect("failed to wait for receiver A to join");
+    receiver_b
+        .joined()
+        .await
+        .expect("failed to wait for receiver B to join");
 
     let receivers: Vec<GossipReceiver> = (0..N)
         .map(|_| receiver_b.clone())
@@ -362,18 +371,18 @@ async fn test_multiple_receivers_all_get_events() {
         sender_a
             .broadcast(format!("msg-a-{i}").into_bytes())
             .await
-            .unwrap();
+            .expect("failed to broadcast from sender A");
         sender_b
             .broadcast(format!("msg-b-{i}").into_bytes())
             .await
-            .unwrap();
+            .expect("failed to broadcast from sender B");
     }
 
     for (i, handle) in handles.into_iter().enumerate() {
         let received = tokio::time::timeout(std::time::Duration::from_secs(60), handle)
             .await
-            .unwrap_or_else(|_| panic!("receiver {i} timed out"))
-            .unwrap();
+            .expect(&format!("receiver {i} timed out"))
+            .expect(&format!("receiver {i} panicked"));
 
         assert_eq!(
             received.len(),

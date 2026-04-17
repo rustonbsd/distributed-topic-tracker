@@ -46,7 +46,7 @@ impl SecretRotation for DefaultSecretRotation {
         h.update(topic_hash);
         h.update(unix_minute.to_be_bytes());
         h.update(initial_secret_hash);
-        h.finalize()[..32].try_into().unwrap()
+        h.finalize()[..32].try_into().expect("keys -> SecretRotation.derive() hash try into [..32] failed")
     }
 }
 
@@ -136,10 +136,11 @@ pub fn encryption_keypair(
 
 /// Derive DHT salt for mutable record lookups.
 ///
-/// Salt = SHA512(topic_hash || unix_minute.to_le_bytes())[..32]
+/// Salt = SHA512("salt" || topic_hash || unix_minute.to_le_bytes())[..32]
 /// Ensures records are stored in different DHT slots per minute.
 pub fn salt(topic_id: &TopicId, unix_minute: u64) -> [u8; 32] {
     let mut slot_hash = sha2::Sha512::new();
+    slot_hash.update(b"salt");
     slot_hash.update(topic_id.hash());
     slot_hash.update(unix_minute.to_le_bytes());
     slot_hash.finalize()[..32]

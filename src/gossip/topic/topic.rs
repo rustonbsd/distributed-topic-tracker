@@ -35,6 +35,26 @@ impl FromStr for TopicId {
     }
 }
 
+impl From<&str> for TopicId {
+    fn from(s: &str) -> Self {
+        Self::new(s.to_string())
+    }
+}
+
+impl From<String> for TopicId {
+    fn from(s: String) -> Self {
+        Self::new(s)
+    }
+}
+
+impl TryFrom<Vec<u8>> for TopicId {
+    type Error = anyhow::Error;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+        Ok(Self::new(String::from_utf8(bytes)?))
+    }
+}
+
 impl TopicId {
     /// Create a new topic ID from a string.
     ///
@@ -288,7 +308,7 @@ mod tests {
             .secret_key(secret_key.clone())
             .bind()
             .await
-            .unwrap();
+            .expect("failed to bind endpoint");
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
 
         let topic_id = crate::TopicId::new("shutdown-receiver-test".to_string());
@@ -304,10 +324,10 @@ mod tests {
 
         let topic = crate::Topic::new(record_publisher, gossip.clone(), true)
             .await
-            .unwrap();
+            .expect("failed to create topic");
 
         let cancel_token = topic.cancel_token();
-        let (_sender, receiver) = topic.split().await.unwrap();
+        let (_sender, receiver) = topic.split().await.expect("failed to split topic");
 
         // Clone the receiver before shutdown, this survivor must not hang
         let mut survivor = receiver.clone();
@@ -359,7 +379,7 @@ mod tests {
             .secret_key(secret_key.clone())
             .bind()
             .await
-            .unwrap();
+            .expect("failed to bind edpoint");
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
 
         let topic_id = crate::TopicId::new("my-iroh-gossip-topic".to_string());
@@ -375,7 +395,7 @@ mod tests {
 
         let topic = crate::Topic::new(record_publisher, gossip.clone(), true)
             .await
-            .unwrap();
+            .expect("failed to create Topic");
 
         let cancel_token = topic.cancel_token();
 
@@ -389,7 +409,7 @@ mod tests {
 
         tokio::time::timeout(std::time::Duration::from_secs(5), cancel_token.cancelled())
             .await
-            .unwrap();
+            .expect("cancel token timed out");
 
         assert!(cancel_token.is_cancelled());
     }

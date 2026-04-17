@@ -17,7 +17,7 @@ rand = "0.9"
 iroh = "*"
 iroh-gossip = "*"
 
-distributed-topic-tracker = "0.2"
+distributed-topic-tracker = "0.3"
 ```
 
 Basic iroh-gossip integration:
@@ -110,15 +110,161 @@ Verify peer discovery across Docker containers:
 
 The E2E test confirms multiple nodes discover each other via DHT and join the same gossip topic.
 
-## Roadmap
+## Upgrading from 0.2 to 0.3
 
-- [x] Finalize crate name and publish to crates.io
-- [x] Tests and CI
-- [x] Add more examples
-- [x] Optimize configuration
-- [x] Major refactor
-- [x] Make `iroh-gossip` integration a feature (repurposed for rustpatcher)
-- [x] API docs
+### Breaking changes
+
+**`RecordTopic` removed, use `TopicId` instead**
+
+`RecordTopic` has been removed. `TopicId` now serves as the unified topic identifier across the entire API and supports conversion from `&str`, `String`, `Vec<u8>`, and `FromStr`.
+
+```rust,ignore
+// 0.2
+use distributed_topic_tracker::RecordTopic;
+let topic = RecordTopic::from_str("my-topic")?;
+let publisher = RecordPublisher::new(topic, signing_key, None, secret);
+
+// 0.3
+use distributed_topic_tracker::TopicId;
+let topic = TopicId::new("my-topic".to_string());
+// or: let topic: TopicId = "my-topic".into();
+// or: let topic: TopicId = "my-topic".parse()?;
+let publisher = RecordPublisher::new(topic, signing_key, None, secret, Config::default());
+```
+
+**`RecordPublisher::new()` now requires a `Config` parameter**
+
+A 5th `Config` parameter was added. Use `Config::default()` for most use cases, tune as needed.
+
+```rust,ignore
+// 0.2
+let publisher = RecordPublisher::new(topic, pub_key, signing_key, None, secret);
+
+// 0.3
+use distributed_topic_tracker::Config;
+let publisher = RecordPublisher::new(topic, signing_key, None, secret, Config::default());
+
+// or use the new builder:
+let publisher = RecordPublisher::builder(topic, signing_key, secret)
+    .config(Config::builder().max_join_peer_count(8).build())
+    .secret_rotation(rotation_handle)
+    .build();
+```
+
+**`MAX_BOOTSTRAP_RECORDS` constant removed**
+
+The per-minute record cap is now configurable via `BootstrapConfig::max_bootstrap_records` (default: 5, was hardcoded 100).
+
+```rust,ignore
+// 0.2
+use distributed_topic_tracker::MAX_BOOTSTRAP_RECORDS; // was 100
+
+// 0.3 - configure via Config
+let config = Config::builder()
+    .bootstrap_config(
+        BootstrapConfig::builder()
+            .max_bootstrap_records(10)
+            .build()
+    )
+    .build();
+```
+
+**`TopicId::raw()` removed**
+
+`TopicId` no longer stores the original string. Only the 32-byte hash is retained.
+
+```rust,ignore
+// 0.2
+let topic = TopicId::new("my-topic".to_string());
+let original: &str = topic.raw(); // no longer available
+
+// 0.3 - store the raw string yourself if needed
+let raw = "my-topic".to_string();
+let topic = TopicId::new(raw.clone());
+```
+
+### New features
+
+**Full configuration system**
+
+All timing, retry, and threshold parameters are now configurable:
+
+```rust,ignore
+use distributed_topic_tracker::{
+    Config, BootstrapConfig, DhtConfig, TimeoutConfig,
+    PublisherConfig, BubbleMergeConfig, MessageOverlapMergeConfig, MergeConfig,
+};
+use std::time::Duration;
+
+Config::builder()
+        .dht_config(
+            DhtConfig::builder()
+                .retries(3)
+                .base_retry_interval(Duration::from_secs(5))
+                .max_retry_jitter(Duration::from_secs(10))
+                .get_timeout(Duration::from_secs(10))
+                .put_timeout(Duration::from_secs(10))
+                .build(),
+        )
+        .bootstrap_config(
+            BootstrapConfig::builder()
+                .max_bootstrap_records(5)
+                .publish_record_on_startup(true)
+                .check_last_minute_record_first_on_startup(false)
+                .discovery_poll_interval(Duration::from_millis(2000))
+                .no_peers_retry_interval(Duration::from_millis(1500))
+                .per_peer_join_settle_time(Duration::from_millis(100))
+                .join_confirmation_wait_time(Duration::from_millis(500))
+                .build(),
+        )
+        .max_join_peer_count(4)
+        .publisher_config(PublisherConfig::Enabled {
+            initial_delay: Duration::from_secs(10),
+            base_interval: Duration::from_secs(10),
+            max_jitter: Duration::from_secs(50),
+        })
+        .merge_config(MergeConfig::new(
+            BubbleMergeConfig::Enabled {
+                base_interval: Duration::from_secs(60),
+                max_jitter: Duration::from_secs(120),
+                min_neighbors: 4,
+            },
+            MessageOverlapMergeConfig::Enabled {
+                base_interval: Duration::from_secs(60),
+                max_jitter: Duration::from_secs(120),
+            },
+        ))
+        .timeouts(
+            TimeoutConfig::builder()
+                .join_peer_timeout(Duration::from_secs(5))
+                .broadcast_neighbors_timeout(Duration::from_secs(5))
+                .broadcast_timeout(Duration::from_secs(5))
+                .build(),
+        )
+        .build();
+```
+
+**Disable merge strategies or publishing**
+
+```rust,ignore
+// Run without any merge or publishing (bootstrap-only)
+let config = Config::builder()
+    .publisher_config(PublisherConfig::Disabled)
+    .merge_config(MergeConfig::new(
+        BubbleMergeConfig::Disabled,
+        MessageOverlapMergeConfig::Disabled,
+    ))
+    .build();
+```
+
+**`RecordPublisher::builder()` for ergonomic construction**
+
+```rust,ignore
+let publisher = RecordPublisher::builder("my-topic", signing_key, b"secret")
+    .secret_rotation(rotation_handle)
+    .config(config)
+    .build();
+```
 
 ## License
 

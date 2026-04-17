@@ -4,7 +4,7 @@ use iroh::{
 };
 use iroh_gossip::net::Gossip;
 
-// Imports from distrubuted-topic-tracker
+// Imports from distributed-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, Config, RecordPublisher, TopicId};
 
 #[tokio::main]

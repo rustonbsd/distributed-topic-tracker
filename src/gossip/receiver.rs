@@ -56,6 +56,7 @@ impl Clone for GossipReceiver {
     }
 }
 
+/// Internal actor for gossip receive operations.
 #[derive(Debug)]
 pub struct GossipReceiverActor {
     gossip_receiver: iroh_gossip::api::GossipReceiver,
@@ -128,6 +129,9 @@ impl GossipReceiver {
         }
     }
 
+    /// Waits for a NeighborUp or a message Received event then returns `Some(())`.
+    /// 
+    /// Returns None if the receiver is closed.
     pub async fn joined(&mut self) -> Option<()> {
         if self.is_joined().await.unwrap_or(false) {
             return Some(());
@@ -211,7 +215,7 @@ impl GossipReceiverActor {
                         }
                     };
 
-                    self.next_channel_sender.send(Some(event.clone())).ok();
+                    self.next_channel_sender.send(Some(event)).ok();
                 }
                 _ = self.cancel_token.cancelled() => {
                     self.join_channel_sender.send(None).ok();

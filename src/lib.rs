@@ -39,7 +39,7 @@ pub const MAX_MESSAGE_HASHES: usize = 5;
 /// ```
 #[doc(hidden)]
 pub fn unix_minute(minute_offset: i64) -> u64 {
-    ((chrono::Utc::now().timestamp() / 60) + minute_offset)
+    ((chrono::Utc::now().timestamp() / 60).saturating_add(minute_offset))
         .try_into()
         .expect("timestamp overflow")
 }

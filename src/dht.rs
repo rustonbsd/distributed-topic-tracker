@@ -49,7 +49,6 @@ impl Dht {
     /// * `pub_key` - Ed25519 public key for the record
     /// * `salt` - Optional salt for record lookup
     /// * `more_recent_than` - Sequence number filter (get records newer than this)
-    /// * `timeout` - Maximum time to wait for results
     pub async fn get(
         &self,
         pub_key: VerifyingKey,
@@ -69,8 +68,6 @@ impl Dht {
     /// * `pub_key` - Ed25519 public key (used for routing)
     /// * `salt` - Optional salt for record slot
     /// * `data` - Record value to publish
-    /// * `retry_count` - Number of retry attempts (default: 3)
-    /// * `timeout` - Per-request timeout
     pub async fn put_mutable(
         &self,
         signing_key: SigningKey,
@@ -96,12 +93,19 @@ impl DhtActor {
         }
 
         let dht = self.dht.as_mut().context("DHT not initialized")?;
-        Ok(tokio::time::timeout(
+        match tokio::time::timeout(
             self.config.get_timeout(),
             dht.get_mutable(pub_key.as_bytes(), salt.as_deref(), more_recent_than)
                 .collect::<Vec<_>>(),
         )
-        .await?)
+        .await
+        {
+            Ok(items) => Ok(items),
+            Err(_) => {
+                tracing::warn!("DHT get operation timed out");
+                bail!("DHT get operation timed out")
+            }
+        }
     }
 
     pub async fn put_mutable(
@@ -158,7 +162,8 @@ impl DhtActor {
             } else {
                 0
             };
-            let retry_interval = (self.config.base_retry_interval().as_millis() + jitter_ms).max(1000);
+            let retry_interval =
+                (self.config.base_retry_interval().as_millis() + jitter_ms).max(1000);
 
             tracing::debug!(
                 "DHTActor: put_mutable attempt {}/{} failed, retrying in {}ms",

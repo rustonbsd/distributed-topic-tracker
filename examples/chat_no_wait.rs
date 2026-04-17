@@ -2,9 +2,10 @@ use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::{api::Event, net::Gossip};
 
-// Imports from distrubuted-topic-tracker
+use ed25519_dalek::SigningKey;
+
+// Imports from distributed-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, Config, RecordPublisher, TopicId};
-use mainline::SigningKey;
 
 #[tokio::main]
 async fn main() -> Result<()> {
