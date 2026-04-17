@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+/// Timeout settings for gossip operations.
 #[derive(Debug, Clone)]
 pub struct TimeoutConfig {
     join_peer_timeout: Duration,
@@ -8,6 +9,7 @@ pub struct TimeoutConfig {
 }
 
 impl TimeoutConfig {
+    /// Create a new `TimeoutConfigBuilder` with default values.
     pub fn builder() -> TimeoutConfigBuilder {
         TimeoutConfigBuilder {
             timeouts: TimeoutConfig::default(),
@@ -40,6 +42,7 @@ impl Default for TimeoutConfig {
     }
 }
 
+/// Builder for `TimeoutConfig`.
 #[derive(Debug)]
 pub struct TimeoutConfigBuilder {
     timeouts: TimeoutConfig,
@@ -64,11 +67,13 @@ impl TimeoutConfigBuilder {
         self
     }
 
+    /// Build the `TimeoutConfig`.
     pub fn build(self) -> TimeoutConfig {
         self.timeouts
     }
 }
 
+/// DHT operation settings including retry logic and timeouts.
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
     retries: usize,
@@ -78,6 +83,7 @@ pub struct DhtConfig {
     get_timeout: Duration,
 }
 
+/// Builder for `DhtConfig`.
 #[derive(Debug, Clone)]
 pub struct DhtConfigBuilder {
     config: DhtConfig,
@@ -114,12 +120,14 @@ impl DhtConfigBuilder {
         self
     }
 
+    /// Build the `DhtConfig`.
     pub fn build(self) -> DhtConfig {
         self.config
     }
 }
 
 impl DhtConfig {
+    /// Create a new `DhtConfigBuilder` with default values.
     pub fn builder() -> DhtConfigBuilder {
         DhtConfigBuilder {
             config: DhtConfig::default(),
@@ -244,6 +252,7 @@ impl MergeConfig {
     }
 }
 
+/// Bootstrap process settings for peer discovery.
 #[derive(Debug, Clone)]
 pub struct BootstrapConfig {
     max_bootstrap_records: usize,
@@ -269,15 +278,16 @@ impl Default for BootstrapConfig {
     }
 }
 
+/// Builder for `BootstrapConfig`.
 #[derive(Debug)]
 pub struct BootstrapConfigBuilder {
     config: BootstrapConfig,
 }
 
 impl BootstrapConfigBuilder {
-    /// Max bootstrap records per topic per minute slot (min 1). Default: 5.
+    /// Max bootstrap records per topic per minute slot. If zero, we don't publish (PublisherConfig will be set to Disabled). Default: 5.
     pub fn max_bootstrap_records(mut self, max_records: usize) -> Self {
-        self.config.max_bootstrap_records = max_records.max(1);
+        self.config.max_bootstrap_records = max_records;
         self
     }
 
@@ -311,7 +321,7 @@ impl BootstrapConfigBuilder {
         self
     }
 
-    /// Whether to check the last minute record unix_minute-1 before the current time window unix_minute on startup.  Default: false.
+    /// Whether to check the last minute record unix_minute-1 before the current time window unix_minute on startup (in this impl unix_minute and unix_minute-1 are both always fetched, if this is enabled than we first fetch unix_minute-2 and unix_minute-1).  Default: false.
     /// 
     /// If joining longer running, existing topics is priority, set to true.
     /// If minimizing bootstrap time for cluster cold starts (2+ nodes starting roughly at the same time into a topic without peers), set to false.
@@ -320,19 +330,21 @@ impl BootstrapConfigBuilder {
         self
     }
 
+    /// Build the `BootstrapConfig`.
     pub fn build(self) -> BootstrapConfig {
         self.config
     }
 }
 
 impl BootstrapConfig {
+    /// Create a new `BootstrapConfigBuilder` with default values.
     pub fn builder() -> BootstrapConfigBuilder {
         BootstrapConfigBuilder {
             config: BootstrapConfig::default(),
         }
     }
 
-    /// Max bootstrap records per topic per minute slot (min 1). Default: 5.
+    /// Max bootstrap records per topic per minute slot. If zero, we don't publish (PublisherConfig will be set to Disabled, make sure to use config builder to enforce). Default: 5.
     pub fn max_bootstrap_records(&self) -> usize {
         self.max_bootstrap_records
     }
@@ -362,7 +374,7 @@ impl BootstrapConfig {
         self.publish_record_on_startup
     }
 
-    /// Whether to check the last minute record unix_minute-1 before the current time window unix_minute on startup.  Default: false.
+    /// Whether to check the last minute record unix_minute-1 before the current time window unix_minute on startup (in this impl unix_minute and unix_minute-1 are both always fetched, if this is enabled than we first fetch unix_minute-2 and unix_minute-1).  Default: false.
     /// 
     /// If joining longer running, existing topics is priority, set to true.
     /// If minimizing bootstrap time for cluster cold starts (2+ nodes starting roughly at the same time into a topic without peers), set to false.
@@ -371,6 +383,7 @@ impl BootstrapConfig {
     }
 }
 
+/// Top-level configuration combining all settings.
 #[derive(Debug, Clone)]
 pub struct Config {
     bootstrap_config: BootstrapConfig,
@@ -384,6 +397,7 @@ pub struct Config {
 }
 
 impl Config {
+    /// Create a new `ConfigBuilder` with default values.
     pub fn builder() -> ConfigBuilder {
         ConfigBuilder {
             config: Config::default(),
@@ -445,6 +459,7 @@ impl Default for Config {
     }
 }
 
+/// Builder for `Config`.
 #[derive(Debug)]
 pub struct ConfigBuilder {
     config: Config,
@@ -488,7 +503,14 @@ impl ConfigBuilder {
         self
     }
 
+    /// Build the `Config`. If `max_bootstrap_records` is zero, `PublisherConfig` is set to `Disabled`.
     pub fn build(self) -> Config {
-        self.config
+        let mut config = self.config;
+        if config.bootstrap_config.max_bootstrap_records == 0 {
+            // if max_bootstrap_records is zero, we don't publish, so disable publisher to avoid confusion
+            config.publisher_config = PublisherConfig::Disabled;
+        }
+
+        config
     }
 }

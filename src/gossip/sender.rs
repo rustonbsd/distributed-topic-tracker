@@ -20,6 +20,7 @@ pub struct GossipSender {
     pub(crate) timeout_config: TimeoutConfig,
 }
 
+/// Internal actor for gossip send operations.
 #[derive(Debug)]
 pub struct GossipSenderActor {
     gossip_sender: iroh_gossip::api::GossipSender,

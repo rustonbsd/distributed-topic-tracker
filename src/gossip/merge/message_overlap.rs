@@ -9,7 +9,7 @@ use anyhow::Result;
 
 /// Detects network partitions by comparing message hashes across DHT records.
 ///
-/// Joins peers when their published hashes match local message history.
+/// Joins peers whose published hashes do not overlap with local message history.
 #[derive(Debug, Clone)]
 pub struct MessageOverlapMerge {
     _api: Handle<MessageOverlapMergeActor, anyhow::Error>,
@@ -114,7 +114,7 @@ impl MessageOverlapMergeActor {
                     if let Ok(content) = record.content::<GossipRecordContent>() {
                         content.last_message_hashes.iter().any(|last_message_hash| {
                             *last_message_hash != [0; 32]
-                                && last_message_hashes.contains(last_message_hash)
+                                && !last_message_hashes.contains(last_message_hash)
                         })
                     } else {
                         false
@@ -123,7 +123,7 @@ impl MessageOverlapMergeActor {
                 .collect::<Vec<_>>();
 
             tracing::debug!(
-                "MessageOverlapMerge: found {} peers with overlapping message hashes",
+                "MessageOverlapMerge: found {} peers with no overlapping message hashes",
                 peers_to_join.len()
             );
 
@@ -160,7 +160,7 @@ impl MessageOverlapMergeActor {
                     .collect::<HashSet<_>>();
 
                 tracing::debug!(
-                    "MessageOverlapMerge: attempting to join {} node_ids with overlapping messages",
+                    "MessageOverlapMerge: attempting to join {} node_ids with no overlapping messages",
                     node_ids.len()
                 );
 

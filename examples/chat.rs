@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
         print!("\n> ");
         stdin.read_line(&mut buffer).unwrap();
         gossip_sender
-            .broadcast(buffer.clone().replace("\n", "").into())
+            .broadcast(buffer.clone().replace("\n", "").replace("\r\n", "").into())
             .await
             .unwrap();
         println!(" - (sent)");

@@ -4,7 +4,7 @@ use iroh::{Endpoint, SecretKey};
 use iroh_gossip::{api::Event, net::Gossip};
 use sha2::Digest;
 
-// Imports from distrubuted-topic-tracker
+// Imports from distributed-topic-tracker
 use distributed_topic_tracker::{
     AutoDiscoveryGossip, Config, RecordPublisher, RotationHandle, SecretRotation, TopicId
 };
@@ -48,8 +48,6 @@ async fn main() -> Result<()> {
 
     let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
-
-    // Split into sink (sending) and stream (receiving)
 
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),

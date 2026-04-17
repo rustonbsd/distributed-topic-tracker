@@ -1,6 +1,6 @@
 //! Bubble detection: merge isolated peer groups in the same topic.
 //!
-//! If local peer count < 4, extract suggested peers from DHT records and join them.
+//! If local peer count < `min_neighbors`, extract suggested peers from DHT records and join them.
 
 use actor_helper::{Action, Handle, Receiver};
 use iroh::EndpointId;
@@ -11,7 +11,7 @@ use anyhow::Result;
 
 /// Detects and merges small isolated peer groups (bubbles).
 ///
-/// Triggers when local peer count < 4 and DHT records exist. Extracts `active_peers`
+/// Triggers when local peer count < `min_neighbors` and DHT records exist. Extracts `active_peers`
 /// from DHT records and joins them.
 #[derive(Debug, Clone)]
 pub struct BubbleMerge {
