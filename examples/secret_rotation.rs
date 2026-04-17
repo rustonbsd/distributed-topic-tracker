@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
 
     // Spawn listener for incoming messages
     tokio::spawn(async move {
-        while let Some(event) = gossip_receiver.next().await {
+        while let Ok(event) = gossip_receiver.next().await {
             if let Event::Received(msg) = event {
                 println!(
                     "\nMessage from {}: {}",

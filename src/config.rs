@@ -90,7 +90,7 @@ pub struct DhtConfigBuilder {
 }
 
 impl DhtConfigBuilder {
-    /// Number of DHT operation retry attempts (first attempt + retries). Default: 3.
+    /// Number of retries after the initial attempt (total attempts = 1 + retries). Default: 3.
     pub fn retries(mut self, retries: usize) -> Self {
         self.config.retries = retries;
         self
@@ -292,26 +292,26 @@ impl BootstrapConfigBuilder {
     }
 
     /// How long to wait when no peers are found before retrying. Default: 1500ms.
-    pub fn no_peers_retry_interval(mut self, interval_ms: Duration) -> Self {
-        self.config.no_peers_retry_interval = interval_ms;
+    pub fn no_peers_retry_interval(mut self, interval: Duration) -> Self {
+        self.config.no_peers_retry_interval = interval;
         self
     }
 
     /// How long to wait after joining a peer before attempting to join another. Default: 100ms.
-    pub fn per_peer_join_settle_time(mut self, interval_ms: Duration) -> Self {
-        self.config.per_peer_join_settle_time = interval_ms;
+    pub fn per_peer_join_settle_time(mut self, interval: Duration) -> Self {
+        self.config.per_peer_join_settle_time = interval;
         self
     }
 
     /// How long to wait after joining a peer before checking if joined successfully. Default: 500ms.
-    pub fn join_confirmation_wait_time(mut self, interval_ms: Duration) -> Self {
-        self.config.join_confirmation_wait_time = interval_ms;
+    pub fn join_confirmation_wait_time(mut self, interval: Duration) -> Self {
+        self.config.join_confirmation_wait_time = interval;
         self
     }
 
     /// How long to wait between DHT discovery attempts. Default: 2000ms.
-    pub fn discovery_poll_interval(mut self, interval_ms: Duration) -> Self {
-        self.config.discovery_poll_interval = interval_ms;
+    pub fn discovery_poll_interval(mut self, interval: Duration) -> Self {
+        self.config.discovery_poll_interval = interval;
         self
     }
 
