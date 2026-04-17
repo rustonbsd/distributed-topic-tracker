@@ -338,19 +338,19 @@ mod tests {
         // not hang. If the broadcast channel didn't close, this would block forever
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), survivor.next())
             .await
-            .expect("next() hung after shutdown — broadcast channel didn't close");
-        assert!(result.is_none(), "expected None from next() after shutdown");
+            .expect("next() hung after shutdown - broadcast channel didn't close");
+        assert!(result.is_err(), "expected Err from next() after shutdown");
 
-        // joined() must also return None after shutdown
+        // joined() must also return Err after shutdown
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), survivor.joined())
             .await
-            .expect("joined() hung after shutdown — broadcast channel didn't close");
+            .expect("joined() hung after shutdown - broadcast channel didn't close");
         assert!(
-            result.is_none(),
-            "expected None from joined() after shutdown"
+            result.is_err(),
+            "expected Err from joined() after shutdown"
         );
 
-        // A clone made after shutdown must also return None immediately
+        // A clone made after shutdown must also return Err immediately
         // (WeakSender::upgrade fails -> gets an already closed channel)
         let mut late_clone = survivor.clone();
 
@@ -358,16 +358,16 @@ mod tests {
             .await
             .expect("next() hung on post shutdown clone, WeakSender upgrade should fail");
         assert!(
-            result.is_none(),
-            "expected None from next() on post shutdown clone"
+            result.is_err(),
+            "expected Err from next() on post shutdown clone"
         );
 
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), late_clone.joined())
             .await
             .expect("joined() hung on post shutdown clone, WeakSender upgrade should fail");
         assert!(
-            result.is_none(),
-            "expected None from joined() on post shutdown clone"
+            result.is_err(),
+            "expected Err from joined() on post shutdown clone"
         );
     }
 

@@ -353,10 +353,10 @@ async fn test_multiple_receivers_all_get_events() {
                 while received.len() < MSG_COUNT {
                     match tokio::time::timeout(std::time::Duration::from_secs(30), rx.next()).await
                     {
-                        Ok(Some(iroh_gossip::api::Event::Received(msg))) => {
+                        Ok(Ok(iroh_gossip::api::Event::Received(msg))) => {
                             received.push(msg.content.to_vec());
                         }
-                        Ok(Some(_)) => continue,
+                        Ok(Ok(_)) => continue,
                         other => panic!("receiver {i}: unexpected result: {other:?}"),
                     }
                 }

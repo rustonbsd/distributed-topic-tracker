@@ -16,7 +16,7 @@ The publishing procedure is a rate-limited mechanism that prevents DHT overload 
    - Use the same key derivation as bootstrap:
      - Derive signing keypair: `keypair_seed = SHA512(topic_hash + unix_minute)[..32]`
      - Derive encryption keypair: `enc_keypair_seed = secret_rotation_function.get_unix_minute_secret(topic_hash, unix_minute, initial_secret_hash)`
-     - Calculate salt: `salt = SHA512(topic_hash + unix_minute)[..32]`
+     - Calculate salt: `salt = SHA512("salt" + topic_hash + unix_minute)[..32]`
      - Query DHT: `get_mutable(signing_pubkey, salt)` with 10s timeout
 
 2. **Rate Limiting Check**
@@ -342,7 +342,7 @@ A one-time key encryption scheme is used to protect record content while allowin
 
 **Signing Keypair (Public DHT Discovery):**
 - Purpose: Used for DHT mutable record signing and salt calculation
-- Derivation: `signing_keypair_seed = SHA512("salt" + topic_hash + unix_minute)[..32]`
+- Derivation: `signing_keypair_seed = SHA512(topic_hash + unix_minute)[..32]`
 - Key: `ed25519_dalek::SigningKey::from_bytes(signing_keypair_seed)`
 - Public: This keypair is deterministic and publicly derivable
 
@@ -354,7 +354,7 @@ A one-time key encryption scheme is used to protect record content while allowin
 
 **Salt Calculation:**
 - Purpose: Used as salt parameter for DHT mutable record storage
-- Derivation: `salt = SHA512(topic_hash + unix_minute)[..32]`
+- Derivation: `salt = SHA512("salt" + topic_hash + unix_minute)[..32]`
 
 ### Encryption Process
 

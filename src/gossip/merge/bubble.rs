@@ -83,7 +83,9 @@ impl BubbleMergeActor {
                 }
                 _ = self.ticker.tick() => {
                     tracing::debug!("BubbleMerge: tick fired, checking for bubbles");
-                    let _ = self.merge().await;
+                    if let Err(e) = self.merge().await {
+                        tracing::warn!("BubbleMerge: error during merge: {:?}", e);
+                    }
                     let jitter_ms = if self.max_jitter.as_millis() > 0 {
                         rand::random::<u128>() % self.max_jitter.as_millis()
                     } else {

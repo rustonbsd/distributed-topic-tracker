@@ -2,6 +2,7 @@
 
 use std::{
     collections::{HashSet, VecDeque},
+    fmt::Display,
     sync::Arc,
 };
 
@@ -66,6 +67,35 @@ pub struct GossipReceiverActor {
     join_channel_sender: tokio::sync::broadcast::Sender<Option<()>>,
 }
 
+#[derive(Debug)]
+pub enum ChannelError {
+    Closed,
+    Lagged(u64),
+}
+
+impl From<tokio::sync::broadcast::error::RecvError> for ChannelError {
+    fn from(err: tokio::sync::broadcast::error::RecvError) -> Self {
+        match err {
+            tokio::sync::broadcast::error::RecvError::Closed => ChannelError::Closed,
+            tokio::sync::broadcast::error::RecvError::Lagged(skipped) => {
+                ChannelError::Lagged(skipped)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ChannelError {}
+impl Display for ChannelError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChannelError::Closed => write!(f, "channel closed"),
+            ChannelError::Lagged(skipped) => {
+                write!(f, "channel lagged, skipped {} messages", skipped)
+            }
+        }
+    }
+}
+
 impl GossipReceiver {
     /// Create a new gossip receiver from an iroh topic receiver.
     pub fn new(
@@ -113,39 +143,27 @@ impl GossipReceiver {
     }
 
     /// Receive the next gossip event.
-    ///
-    /// Returns `None` if the receiver is closed.
-    pub async fn next(&mut self) -> Option<iroh_gossip::api::Event> {
-        loop {
-            match self.next_channel_receiver.recv().await {
-                Ok(event) => return event,
-                Err(err) => match err {
-                    tokio::sync::broadcast::error::RecvError::Closed => return None,
-                    tokio::sync::broadcast::error::RecvError::Lagged(skipped) => tracing::warn!(
-                        "GossipReceiver: event stream lagged, {skipped} events may have been missed"
-                    ),
-                },
+    pub async fn next(&mut self) -> Result<iroh_gossip::api::Event, ChannelError> {
+        match self.next_channel_receiver.recv().await {
+            Ok(event) => match event {
+                Some(event) => Ok(event),
+                None => Err(ChannelError::Closed),
             }
+            Err(err) => Err(err.into()),
         }
     }
 
-    /// Waits for a NeighborUp or a message Received event then returns `Some(())`.
-    /// 
-    /// Returns None if the receiver is closed.
-    pub async fn joined(&mut self) -> Option<()> {
+    /// Waits for a NeighborUp or a message Received event then returns `Ok(())`.
+    pub async fn joined(&mut self) -> Result<(), ChannelError> {
         if self.is_joined().await.unwrap_or(false) {
-            return Some(());
+            return Ok(());
         }
-        loop {
-            match self.join_channel_receiver.recv().await {
-                Ok(event) => return event,
-                Err(err) => match err {
-                    tokio::sync::broadcast::error::RecvError::Closed => return None,
-                    tokio::sync::broadcast::error::RecvError::Lagged(skipped) => tracing::warn!(
-                        "GossipReceiver: join event stream lagged, {skipped} events may have been missed"
-                    ),
-                },
-            }
+        match self.join_channel_receiver.recv().await {
+            Ok(event) => match event {
+                Some(event) => Ok(event),
+                None => Err(ChannelError::Closed),
+            },
+            Err(err) => Err(err.into()),
         }
     }
 

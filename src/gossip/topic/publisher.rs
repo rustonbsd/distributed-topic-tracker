@@ -72,7 +72,9 @@ impl PublisherActor {
                 }
                 _ = self.ticker.tick() => {
                     tracing::debug!("Publisher: tick fired, attempting to publish");
-                    let _ = self.publish().await;
+                    if let Err(e) = self.publish().await {
+                        tracing::warn!("Publisher: failed to publish record: {:?}", e);
+                    }
                     let jitter_ms = if self.max_jitter.as_millis() > 0 {
                         rand::random::<u128>() % self.max_jitter.as_millis()
                     } else {

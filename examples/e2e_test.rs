@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
         .await?;
 
     tokio::spawn(async move {
-        while let Some(event) = gossip_receiver.next().await {
+        while let Ok(event) = gossip_receiver.next().await {
             println!("event: {event:?}");
         }
     });
