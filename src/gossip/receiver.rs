@@ -148,14 +148,14 @@ impl GossipReceiver {
             Ok(event) => match event {
                 Some(event) => Ok(event),
                 None => Err(ChannelError::Closed),
-            }
+            },
             Err(err) => Err(err.into()),
         }
     }
 
     /// Waits for a NeighborUp or a message Received event then returns `Ok(())`.
     pub async fn joined(&mut self) -> Result<(), ChannelError> {
-        if self.is_joined().await.unwrap_or(false) {
+        if self.is_joined().await.map_err(|_| ChannelError::Closed)? {
             return Ok(());
         }
         match self.join_channel_receiver.recv().await {

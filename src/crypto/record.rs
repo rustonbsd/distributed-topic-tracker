@@ -1,11 +1,13 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{Result, bail};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
+use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
+use tokio::sync::Mutex;
 
 use crate::{Config, TopicId};
 
@@ -37,8 +39,6 @@ pub struct Record {
 pub struct RecordContent(pub Vec<u8>);
 
 impl RecordContent {
-    const MAX_SIZE: usize = 2048;
-
     /// Deserialize using postcard codec.
     ///
     /// # Example
@@ -52,14 +52,39 @@ impl RecordContent {
 
     /// Serialize from an arbitrary type using postcard.
     pub fn from_arbitrary<T: Serialize>(from: &T) -> anyhow::Result<Self> {
-        let serialized = postcard::to_allocvec(from).map_err(|e| anyhow::anyhow!(e))?;
-        if serialized.len() > Self::MAX_SIZE {
-            bail!(
-                "record content exceeds maximum size of {} bytes",
-                Self::MAX_SIZE
-            )
-        }
-        Ok(Self(serialized))
+        Ok(Self(
+            postcard::to_allocvec(from).map_err(|e| anyhow::anyhow!(e))?,
+        ))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct NextDhtSeq {
+    inner: Arc<Mutex<LruCache<u64, i64>>>,
+}
+
+impl Default for NextDhtSeq {
+    fn default() -> Self {
+        Self::new(100).expect("capacity must be > 0")
+    }
+}
+
+impl NextDhtSeq {
+    fn new(capacity: usize) -> Result<Self> {
+        Ok(Self {
+            inner: Arc::new(Mutex::new(LruCache::new(
+                std::num::NonZeroUsize::new(capacity)
+                    .ok_or_else(|| anyhow::anyhow!("capacity must be > 0"))?,
+            ))),
+        })
+    }
+
+    async fn next(&self, unix_minute: u64) -> i64 {
+        let mut guard = self.inner.lock().await;
+        let current_seq = *guard.get(&unix_minute).unwrap_or(&0);
+
+        guard.put(unix_minute, current_seq + 1);
+        current_seq
     }
 }
 
@@ -69,6 +94,7 @@ impl RecordContent {
 #[derive(Debug, Clone)]
 pub struct RecordPublisher {
     dht: crate::dht::Dht,
+    dht_seq: NextDhtSeq,
 
     config: crate::config::Config,
 
@@ -154,6 +180,7 @@ impl RecordPublisher {
 
         Self {
             dht: crate::dht::Dht::new(config.dht_config()),
+            dht_seq: NextDhtSeq::default(),
             config,
             topic_id: topic_id.into(),
             pub_key: signing_key.verifying_key(),
@@ -235,7 +262,7 @@ impl RecordPublisher {
             records
         } else {
             self.get_records(record.unix_minute())
-                .await
+                .await?
                 .iter()
                 .cloned()
                 .collect::<HashSet<_>>()
@@ -265,18 +292,19 @@ impl RecordPublisher {
             record.unix_minute,
         );
         let encrypted_record = record.encrypt(&encryption_key);
+        let next_seq_num = self.dht_seq.next(record.unix_minute()).await;
 
         tracing::debug!(
-            "RecordPublisher: publishing record to DHT for unix_minute {}",
+            "RecordPublisher: publishing record to DHT for unix_minute {} with seq_num {next_seq_num}",
             record.unix_minute()
         );
 
         self.dht
             .put_mutable(
                 sign_key.clone(),
-                sign_key.verifying_key(),
                 Some(salt.to_vec()),
                 encrypted_record.to_bytes().to_vec(),
+                next_seq_num,
             )
             .await?;
 
@@ -287,7 +315,8 @@ impl RecordPublisher {
     /// Retrieve all verified records for a given time slot from the DHT.
     ///
     /// Filters out records from this publisher's own node ID.
-    pub async fn get_records(&self, unix_minute: u64) -> HashSet<Record> {
+    /// Dedub's records based on pub_key, keeping the newest sequence number per pub_key.
+    pub async fn get_records(&self, unix_minute: u64) -> Result<HashSet<Record>> {
         tracing::debug!(
             "RecordPublisher: fetching records from DHT for unix_minute {}",
             unix_minute
@@ -306,42 +335,43 @@ impl RecordPublisher {
         let records_iter = self
             .dht
             .get(topic_sign.verifying_key(), Some(salt.to_vec()), None)
-            .await
-            .unwrap_or_default();
+            .await?;
 
         tracing::debug!(
             "RecordPublisher: received {} raw records from DHT",
             records_iter.len()
         );
 
-        let verified_records = records_iter
-            .iter()
-            .filter_map(
-                |record| match EncryptedRecord::from_bytes(record.value().to_vec()) {
-                    Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
-                        Ok(record) => match record.verify(&self.topic_id.hash(), unix_minute) {
-                            Ok(_) => match record.pub_key().eq(self.pub_key.as_bytes()) {
-                                true => None,
-                                false => Some(record),
-                            },
-                            Err(_) => None,
-                        },
-                        Err(_) => None,
-                    },
-                    Err(_) => None,
-                },
-            )
-            .collect::<HashSet<_>>();
-
+        let mut dedubed_records: Vec<(i64, Record)> = vec![];
+        for item in records_iter.clone() {
+            if let Ok(encrypted_record) = EncryptedRecord::from_bytes(item.value().to_vec())
+                && let Ok(record) = encrypted_record.decrypt(&encryption_key)
+                && record.verify(&self.topic_id.hash(), unix_minute).is_ok()
+                && !record.pub_key().eq(self.pub_key.as_bytes())
+            {
+                if !dedubed_records
+                    .iter()
+                    .any(|(seq, r)| r.pub_key() == record.pub_key() && *seq >= item.seq())
+                {
+                    dedubed_records.push((item.seq(), record));
+                }
+            }
+        }
         tracing::debug!(
             "RecordPublisher: verified {} records (filtered self)",
-            verified_records.len()
+            dedubed_records.len()
         );
-        verified_records
+
+        Ok(dedubed_records
+            .into_iter()
+            .map(|(_, record)| record)
+            .collect::<HashSet<_>>())
     }
 }
 
 impl EncryptedRecord {
+    const MAX_SIZE: usize = 2048;
+
     /// Decrypt using an Ed25519 HPKE private key.
     pub fn decrypt(&self, decryption_key: &ed25519_dalek::SigningKey) -> Result<Record> {
         let one_time_key_bytes: [u8; 32] = decryption_key
@@ -376,7 +406,7 @@ impl EncryptedRecord {
         let expected_payload_len = encrypted_record_len
             .checked_add(ENCRYPTED_KEY_LENGTH as u32)
             .ok_or_else(|| anyhow::anyhow!("encrypted record length overflow"))?;
-        if encrypted_record_len > RecordContent::MAX_SIZE as u32 {
+        if encrypted_record_len > Self::MAX_SIZE as u32 {
             bail!("encrypted record length exceeds maximum allowed size")
         }
         if buf.len() != expected_payload_len as usize {

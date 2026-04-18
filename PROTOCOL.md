@@ -50,7 +50,7 @@ The publishing procedure is a rate-limited mechanism that prevents DHT overload 
 flowchart TD
   A[Start Publishing Procedure] --> B[Get Current Unix Minute]
   B --> C[Derive Keys: Signing & Encryption]
-  C --> D[Calculate Salt: SHA512 = topic_hash + unix_minute]
+  C --> D[Calculate Salt: SHA512 = "salt" + topic_hash + unix_minute]
   D --> E[Query DHT: get_mutable = signing_pubkey, salt; Timeout: 10s]
 
   E --> F[Decrypt & Verify Records]
@@ -116,7 +116,7 @@ The bootstrap procedure is a continuous loop that attempts to discover and conne
    - Call `get_records()` for both `unix_minute - 1` and `unix_minute`:
      - Derive signing keypair: `keypair_seed = SHA512(topic_hash + unix_minute)[..32]`
      - Derive encryption keypair from shared secret
-     - Calculate salt: `SHA512(topic_hash + unix_minute)[..32]`
+     - Calculate salt: `SHA512("salt" + topic_hash + unix_minute)[..32]`
      - Query DHT: `get_mutable(signing_pubkey, salt)` with 10s timeout
      - Decrypt each record using the encryption keypair
      - Verify signature, unix_minute, and topic hash
@@ -296,7 +296,7 @@ pub struct Record {
     unix_minute: u64,                   // floor(unixtime / 60)
     pub_key: [u8; 32],                  // publisher ed25519 public key
 
-    // Content (serialized via bincode)
+    // Content (serialized via postcard)
     content: RecordContent,             // Vec<u8> wrapping serialized data
 
     // Signature
