@@ -124,10 +124,10 @@ impl BubbleMergeActor {
                 neighbors.len(),
                 self.min_neighbors
             );
-            let node_ids = records
+            let pub_keys = records
                 .iter()
                 .flat_map(|record| {
-                    let mut endpoint_ids = if let Ok(content) =
+                    let mut pub_keys = if let Ok(content) =
                         record.content::<GossipRecordContent>()
                     {
                         content
@@ -136,7 +136,7 @@ impl BubbleMergeActor {
                             .filter_map(|&active_peer| {
                                 if active_peer == [0; 32]
                                     || neighbors.contains(&active_peer)
-                                    || active_peer == record.node_id()
+                                    || active_peer == record.pub_key()
                                     || active_peer.eq(self.record_publisher.pub_key().as_bytes())
                                 {
                                     None
@@ -148,25 +148,25 @@ impl BubbleMergeActor {
                     } else {
                         vec![]
                     };
-                    if let Ok(endpoint_id) = EndpointId::from_bytes(&record.node_id())
-                        && endpoint_id
+                    if let Ok(pub_key) = EndpointId::from_bytes(&record.pub_key())
+                        && pub_key
                             != EndpointId::from_verifying_key(self.record_publisher.pub_key())
                     {
-                        endpoint_ids.push(endpoint_id);
+                        pub_keys.push(pub_key);
                     }
-                    endpoint_ids
+                    pub_keys
                 })
                 .collect::<HashSet<_>>();
 
             tracing::debug!(
                 "BubbleMerge: found {} potential peers to join",
-                node_ids.len()
+                pub_keys.len()
             );
 
-            if !node_ids.is_empty() {
+            if !pub_keys.is_empty() {
                 self.gossip_sender
                     .join_peers(
-                        node_ids.iter().cloned().collect::<Vec<_>>(),
+                        pub_keys.iter().cloned().collect::<Vec<_>>(),
                         Some(self.max_join_peers),
                     )
                     .await?;

@@ -34,7 +34,7 @@ The publishing procedure is a rate-limited mechanism that prevents DHT overload 
 
 4. **Record Signing and Publishing**
    - Create signed record using `Record::sign()`:
-     - Include: `topic_hash`, `unix_minute`, `node_id`, content (serialized `active_peers` + `last_message_hashes`)
+     - Include: `topic_hash`, `unix_minute`, `pub_key`, content (serialized `active_peers` + `last_message_hashes`)
      - Sign with node's ed25519 signing key
    - Encrypt record using one-time encryption key
    - Publish to DHT via `Dht::put_mutable()` with retry support
@@ -64,7 +64,7 @@ flowchart TD
   L --> M[Fill last_message_hashes with up to 5 recent hashes]
 
   M --> N[Create Signed Record]
-  N --> O[Sign with: topic + unix_minute + node_id + content]
+  N --> O[Sign with: topic + unix_minute + pub_key + content]
   O --> P[Encrypt Record with One-Time Key]
   P --> Q[Publish to DHT with retries]
 
@@ -120,7 +120,7 @@ The bootstrap procedure is a continuous loop that attempts to discover and conne
      - Query DHT: `get_mutable(signing_pubkey, salt)` with 10s timeout
      - Decrypt each record using the encryption keypair
      - Verify signature, unix_minute, and topic hash
-     - Filter out own records (matching node_id)
+     - Filter out own records (matching pub_key)
 
 5. **If no valid Records Found**
    - If no valid records found and haven't published in this unix minute, publish own record
@@ -128,14 +128,14 @@ The bootstrap procedure is a continuous loop that attempts to discover and conne
 
 6. **If valid Records Found**
    - Extract bootstrap nodes from records:
-     - Include `record.node_id` (the publisher)
+     - Include `record.pub_key` (the publisher)
      - Include all non-zero entries from `record.active_peers[5]`
    - Convert byte arrays to valid `iroh::EndpointId` instances
 
 7. **Connection Attempts**
    - Check again if already connected (someone might have connected to us)
    - If not connected, attempt to join peers one by one:
-     - Call `gossip_sender.join_peers(vec![node_id])` for each bootstrap node
+     - Call `gossip_sender.join_peers(vec![pub_key])` for each bootstrap node
      - Wait `per_peer_join_settle_time` (default 100ms) between attempts
      - Break early if connection established
 
@@ -186,12 +186,12 @@ flowchart TD
 
   N -- Yes --> R[Decrypt & Verify Records]
   R --> S[Filter Valid Records]
-  S --> T[Extract Bootstrap Nodes: node_id + active_peers]
+  S --> T[Extract Bootstrap Nodes: pub_key + active_peers]
   T --> V{Already Connected?}
   V -- Yes --> Z
   V -- No  --> W[Join Peers One by One]
 
-  W --> X[For each bootstrap node: join_peers = node_id]
+  W --> X[For each bootstrap node: join_peers = pub_key]
   X --> Y[Wait per_peer_join_settle_time = 100ms]
   Y --> AA2{Connected?}
   AA2 -- Yes --> Z

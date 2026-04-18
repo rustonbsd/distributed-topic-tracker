@@ -119,7 +119,7 @@ impl BootstrapActor {
                     record_content,
                     record_publisher.signing_key(),
                 ) {
-                    publish_record_fire_and_forget(record_creator, record);
+                    publish_record_fire_and_forget(record_creator, record, None);
                 }
             }
 
@@ -140,10 +140,12 @@ impl BootstrapActor {
                     }
 
                     // On the first try we check the prev unix minute, after that the current one
+                    let mut use_cached_next = true;
                     let unix_minute = crate::unix_minute(
                         if last_published_unix_minute == 0
                             && bootstrap_config.check_last_minute_record_first_on_startup()
                         {
+                            use_cached_next = false;
                             -1
                         } else {
                             0
@@ -152,7 +154,8 @@ impl BootstrapActor {
 
                     // Unique, verified records for the unix minute
                     let mut records = record_publisher.get_records(unix_minute - 1).await;
-                    records.extend(record_publisher.get_records(unix_minute).await);
+                    let current_records = record_publisher.get_records(unix_minute).await;
+                    records.extend(current_records.clone());
 
                     tracing::debug!(
                         "Bootstrap: fetched {} records for unix_minute {}",
@@ -180,7 +183,15 @@ impl BootstrapActor {
                                 record_content,
                                 record_publisher.signing_key(),
                             ) {
-                                publish_record_fire_and_forget(record_creator, record);
+                                publish_record_fire_and_forget(
+                                    record_creator,
+                                    record,
+                                    if use_cached_next {
+                                        Some(current_records.clone())
+                                    } else {
+                                        None
+                                    },
+                                );
                             }
                         }
                         tokio::select! {
@@ -193,11 +204,11 @@ impl BootstrapActor {
 
                     // We found records
 
-                    // Collect node ids from active_peers and record.node_id (of publisher)
+                    // Collect node ids from active_peers and record.pub_key (of publisher)
                     let bootstrap_nodes = records
                         .iter()
                         .flat_map(|record| {
-                            let mut v = vec![record.node_id()];
+                            let mut v = vec![record.pub_key()];
                             if let Ok(record_content) = record.content::<GossipRecordContent>() {
                                 for peer in record_content.active_peers {
                                     if peer != [0; 32] {
@@ -207,7 +218,7 @@ impl BootstrapActor {
                             }
                             v
                         })
-                        .filter_map(|node_id| EndpointId::from_bytes(&node_id).ok())
+                        .filter_map(|pub_key| EndpointId::from_bytes(&pub_key).ok())
                         .collect::<HashSet<_>>();
 
                     tracing::debug!(
@@ -230,12 +241,12 @@ impl BootstrapActor {
                         break;
                     }
 
-                    // Instead of throwing everything into join_peers() at once we go node_id by node_id
+                    // Instead of throwing everything into join_peers() at once we go pub_key by pub_key
                     // again to disrupt as little nodes peer neighborhoods as possible.
-                    for node_id in bootstrap_nodes.iter() {
-                        match gossip_sender.join_peers(vec![*node_id], None).await {
+                    for pub_key in bootstrap_nodes.iter() {
+                        match gossip_sender.join_peers(vec![*pub_key], None).await {
                             Ok(_) => {
-                                tracing::debug!("Bootstrap: attempted to join peer {}", node_id);
+                                tracing::debug!("Bootstrap: attempted to join peer {}", pub_key);
 
                                 tokio::select! {
                                     _ = sleep(bootstrap_config.per_peer_join_settle_time()) => {}
@@ -248,7 +259,7 @@ impl BootstrapActor {
                                 {
                                     tracing::debug!(
                                         "Bootstrap: successfully joined via peer {}",
-                                        node_id
+                                        pub_key
                                     );
                                     is_joined_ret = true;
                                     break;
@@ -263,7 +274,7 @@ impl BootstrapActor {
                             Err(e) => {
                                 tracing::debug!(
                                     "Bootstrap: failed to join peer {}: {:?}",
-                                    node_id,
+                                    pub_key,
                                     e
                                 );
                                 continue;
@@ -321,7 +332,15 @@ impl BootstrapActor {
                                 },
                                 record_publisher.signing_key(),
                             ) {
-                                publish_record_fire_and_forget(record_creator, record);
+                                publish_record_fire_and_forget(
+                                    record_creator,
+                                    record,
+                                    if use_cached_next {
+                                        Some(current_records)
+                                    } else {
+                                        None
+                                    },
+                                );
                             }
                         }
                         tokio::select! {
@@ -347,9 +366,16 @@ impl BootstrapActor {
     }
 }
 
-fn publish_record_fire_and_forget(record_publisher: RecordPublisher, record: Record) {
+fn publish_record_fire_and_forget(
+    record_publisher: RecordPublisher,
+    record: Record,
+    cached_records: Option<HashSet<Record>>,
+) {
     tokio::spawn(async move {
-        if let Err(err) = record_publisher.publish_record(record).await {
+        if let Err(err) = record_publisher
+            .publish_record_cached_records(record, cached_records)
+            .await
+        {
             tracing::warn!("Failed to publish record: {:?}", err);
         }
     });

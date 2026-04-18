@@ -34,7 +34,7 @@ fn test_record_serialization_roundtrip() {
 
     assert_eq!(record.topic(), deserialized.topic());
     assert_eq!(record.unix_minute(), deserialized.unix_minute());
-    assert_eq!(record.node_id(), deserialized.node_id());
+    assert_eq!(record.pub_key(), deserialized.pub_key());
     assert_eq!(
         record_content.active_peers,
         deserialized_content.active_peers
@@ -101,7 +101,7 @@ fn test_encrypted_record_roundtrip() {
 
     assert_eq!(record.topic(), decrypted.topic());
     assert_eq!(record.unix_minute(), decrypted.unix_minute());
-    assert_eq!(record.node_id(), decrypted.node_id());
+    assert_eq!(record.pub_key(), decrypted.pub_key());
     assert_eq!(
         record_content.active_peers,
         deserialized_content.active_peers

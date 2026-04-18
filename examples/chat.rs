@@ -6,7 +6,7 @@ use ed25519_dalek::SigningKey;
 
 // Imports from distributed-topic-tracker
 use distributed_topic_tracker::{
-    AutoDiscoveryGossip, Config, RecordPublisher, TopicId,
+    AutoDiscoveryGossip, BootstrapConfig, Config, RecordPublisher, TopicId,
 };
 
 #[tokio::main]
@@ -49,7 +49,13 @@ async fn main() -> Result<()> {
         signing_key.clone(),
         None,
         initial_secret,
-        Config::default(),
+        Config::builder()
+            .bootstrap_config(
+                BootstrapConfig::builder()
+                    .check_last_minute_record_first_on_startup(false)
+                    .build(),
+            )
+            .build(),
     );
 
     // Split into sink (sending) and stream (receiving)
@@ -83,7 +89,13 @@ async fn main() -> Result<()> {
         print!("\n> ");
         stdin.read_line(&mut buffer).unwrap();
         gossip_sender
-            .broadcast(buffer.clone().replace("\n", "").replace("\r\n", "").into())
+            .broadcast(
+                buffer
+                    .clone()
+                    .trim_end_matches(&['\r', '\n'][..])
+                    .as_bytes()
+                    .to_vec(),
+            )
             .await
             .unwrap();
         println!(" - (sent)");

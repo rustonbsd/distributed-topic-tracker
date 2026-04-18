@@ -37,6 +37,8 @@ pub struct Record {
 pub struct RecordContent(pub Vec<u8>);
 
 impl RecordContent {
+    const MAX_SIZE: usize = 2048;
+
     /// Deserialize using postcard codec.
     ///
     /// # Example
@@ -50,9 +52,14 @@ impl RecordContent {
 
     /// Serialize from an arbitrary type using postcard.
     pub fn from_arbitrary<T: Serialize>(from: &T) -> anyhow::Result<Self> {
-        Ok(Self(
-            postcard::to_allocvec(from).map_err(|e| anyhow::anyhow!(e))?,
-        ))
+        let serialized = postcard::to_allocvec(from).map_err(|e| anyhow::anyhow!(e))?;
+        if serialized.len() > Self::MAX_SIZE {
+            bail!(
+                "record content exceeds maximum size of {} bytes",
+                Self::MAX_SIZE
+            )
+        }
+        Ok(Self(serialized))
     }
 }
 
@@ -212,12 +219,27 @@ impl RecordPublisher {
     /// Checks existing record count for this time slot and skips publishing if
     /// `self.config.bootstrap_config().max_bootstrap_records()` limit reached.
     pub async fn publish_record(&self, record: Record) -> Result<()> {
-        let records = self
-            .get_records(record.unix_minute())
-            .await
-            .iter()
-            .cloned()
-            .collect::<HashSet<_>>();
+        self.publish_record_cached_records(record, None).await
+    }
+
+    /// Publish a record to the DHT (using cached get_records) if slot capacity allows.
+    ///
+    /// Checks existing record count for this time slot and skips publishing if
+    /// `self.config.bootstrap_config().max_bootstrap_records()` limit reached.
+    pub async fn publish_record_cached_records(
+        &self,
+        record: Record,
+        cached_records: Option<HashSet<Record>>,
+    ) -> Result<()> {
+        let records = if let Some(records) = cached_records {
+            records
+        } else {
+            self.get_records(record.unix_minute())
+                .await
+                .iter()
+                .cloned()
+                .collect::<HashSet<_>>()
+        };
 
         tracing::debug!(
             "RecordPublisher: found {} existing records for unix_minute {}",
@@ -283,11 +305,7 @@ impl RecordPublisher {
         // Get records, decrypt and verify
         let records_iter = self
             .dht
-            .get(
-                topic_sign.verifying_key(),
-                Some(salt.to_vec()),
-                None,
-            )
+            .get(topic_sign.verifying_key(), Some(salt.to_vec()), None)
             .await
             .unwrap_or_default();
 
@@ -302,7 +320,7 @@ impl RecordPublisher {
                 |record| match EncryptedRecord::from_bytes(record.value().to_vec()) {
                     Ok(encrypted_record) => match encrypted_record.decrypt(&encryption_key) {
                         Ok(record) => match record.verify(&self.topic_id.hash(), unix_minute) {
-                            Ok(_) => match record.node_id().eq(self.pub_key.as_bytes()) {
+                            Ok(_) => match record.pub_key().eq(self.pub_key.as_bytes()) {
                                 true => None,
                                 false => Some(record),
                             },
@@ -354,8 +372,14 @@ impl EncryptedRecord {
         }
         let (encrypted_record_len, buf) = buf.split_at(4);
         let encrypted_record_len = u32::from_le_bytes(encrypted_record_len.try_into()?);
-        
-        if buf.len() != encrypted_record_len as usize + 88 /* encrypted_decryption_key.len() == 88 */ {
+        const ENCRYPTED_KEY_LENGTH: usize = 88;
+        let expected_payload_len = encrypted_record_len
+            .checked_add(ENCRYPTED_KEY_LENGTH as u32)
+            .ok_or_else(|| anyhow::anyhow!("encrypted record length overflow"))?;
+        if encrypted_record_len > RecordContent::MAX_SIZE as u32 {
+            bail!("encrypted record length exceeds maximum allowed size")
+        }
+        if buf.len() != expected_payload_len as usize {
             bail!("buffer length does not match expected encrypted record length")
         }
         let (encrypted_record, encrypted_decryption_key) =
@@ -399,7 +423,7 @@ impl Record {
         }
         let (topic, buf) = buf.split_at(32);
         let (unix_minute, buf) = buf.split_at(8);
-        let (node_id, buf) = buf.split_at(32);
+        let (pub_key, buf) = buf.split_at(32);
         let (record_content, buf) = buf.split_at(buf.len() - 64);
 
         let (signature, buf) = buf.split_at(64);
@@ -411,7 +435,7 @@ impl Record {
         Ok(Self {
             topic: topic.try_into()?,
             unix_minute: u64::from_le_bytes(unix_minute.try_into()?),
-            pub_key: node_id.try_into()?,
+            pub_key: pub_key.try_into()?,
             content: RecordContent(record_content.to_vec()),
             signature: signature.try_into()?,
         })
@@ -440,9 +464,9 @@ impl Record {
         let record_bytes = self.to_bytes();
         let signature_data = record_bytes[..record_bytes.len() - 64].to_vec();
         let signature = ed25519_dalek::Signature::from_bytes(&self.signature);
-        let node_id = ed25519_dalek::VerifyingKey::from_bytes(&self.pub_key)?;
+        let pub_key = ed25519_dalek::VerifyingKey::from_bytes(&self.pub_key)?;
 
-        node_id.verify_strict(signature_data.as_slice(), &signature)?;
+        pub_key.verify_strict(signature_data.as_slice(), &signature)?;
 
         Ok(())
     }
@@ -477,7 +501,7 @@ impl Record {
     }
 
     /// Get the node ID (publisher's public key).
-    pub fn node_id(&self) -> [u8; 32] {
+    pub fn pub_key(&self) -> [u8; 32] {
         self.pub_key
     }
 

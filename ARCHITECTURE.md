@@ -96,7 +96,7 @@ sequenceDiagram
   Node->>Node: decrypt, verify, filter(not self)
   alt candidates exist
     loop each candidate
-      Node->>Gossip: join_peers([node_id])
+      Node->>Gossip: join_peers([pub_key])
       Node->>Node: sleep per_peer_join_settle_time (100ms)
       Gossip-->>Node: NeighborUp?
     end
