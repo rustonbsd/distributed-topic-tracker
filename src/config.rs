@@ -133,7 +133,7 @@ impl DhtConfig {
             config: DhtConfig::default(),
         }
     }
-    
+
     /// Number of DHT operation retry attempts (first attempt + retries). Default: 3.
     pub fn retries(&self) -> usize {
         self.retries
@@ -173,57 +173,249 @@ impl Default for DhtConfig {
 }
 
 /// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
-/// base_interval is minimum 1s, max_jitter is minimum 0s. Default: enabled, 60s base, 120s jitter, 4 min neighbors.
+/// base_interval is minimum 1s, max_jitter is minimum 0s, fail_topic_creation_on_merge_startup_failure. Default: enabled, 60s base, 120s jitter, 4 min neighbors, true.
 #[derive(Debug, Clone)]
 pub enum BubbleMergeConfig {
     Enabled {
         base_interval: Duration,
         max_jitter: Duration,
         min_neighbors: usize,
+        fail_topic_creation_on_merge_startup_failure: bool,
     },
     Disabled,
 }
 
+#[derive(Debug, Clone)]
+pub struct BubbleMergeConfigBuilder {
+    base_interval: Duration,
+    max_jitter: Duration,
+    min_neighbors: usize,
+    fail_topic_creation_on_merge_startup_failure: bool,
+}
+
+// NOTE: Also set in `BubbleMergeConfig::builder()`
+impl Default for BubbleMergeConfig {
+    fn default() -> Self {
+        Self::Enabled {
+            base_interval: Duration::from_secs(60),
+            max_jitter: Duration::from_secs(120),
+            min_neighbors: 4,
+            fail_topic_creation_on_merge_startup_failure: true,
+        }
+    }
+}
+
+impl BubbleMergeConfig {
+    pub fn builder() -> BubbleMergeConfigBuilder {
+        BubbleMergeConfigBuilder {
+            base_interval: Duration::from_secs(60),
+            max_jitter: Duration::from_secs(120),
+            min_neighbors: 4,
+            fail_topic_creation_on_merge_startup_failure: true,
+        }
+    }
+}
+
+impl BubbleMergeConfigBuilder {
+    /// Base interval for bubble merge attempts. Default: 60s. Minimum is 1s.
+    pub fn base_interval(mut self, interval: Duration) -> Self {
+        self.base_interval = interval;
+        self
+    }
+
+    /// Max random jitter added to bubble merge interval. Default: 120s. Minimum is 0s.
+    pub fn max_jitter(mut self, jitter: Duration) -> Self {
+        self.max_jitter = jitter;
+        self
+    }
+
+    /// Minimum number of neighbors required to attempt a bubble merge. Default: 4.
+    pub fn min_neighbors(mut self, min_neighbors: usize) -> Self {
+        self.min_neighbors = min_neighbors;
+        self
+    }
+
+    /// Whether to fail topic creation if a bubble merge startup check fails (ret Err()) or just log and run topic without. Default: true.
+    pub fn fail_topic_creation_on_merge_startup_failure(mut self, fail: bool) -> Self {
+        self.fail_topic_creation_on_merge_startup_failure = fail;
+        self
+    }
+
+    /// Build the `BubbleMergeConfig`.
+    pub fn build(self) -> BubbleMergeConfig {
+        BubbleMergeConfig::Enabled {
+            base_interval: self.base_interval,
+            max_jitter: self.max_jitter,
+            min_neighbors: self.min_neighbors,
+            fail_topic_creation_on_merge_startup_failure: self
+                .fail_topic_creation_on_merge_startup_failure,
+        }
+    }
+}
+
 /// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
-/// base_interval is minimum 1s, max_jitter is minimum 0s. Default: enabled, 60s base, 120s jitter.
+/// base_interval is minimum 1s, max_jitter is minimum 0s, fail_topic_creation_on_merge_startup_failure. Default: enabled, 60s base, 120s jitter, true.
 #[derive(Debug, Clone)]
 pub enum MessageOverlapMergeConfig {
     Enabled {
         base_interval: Duration,
         max_jitter: Duration,
+        fail_topic_creation_on_merge_startup_failure: bool,
     },
     Disabled,
 }
 
+#[derive(Debug, Clone)]
+pub struct MessageOverlapMergeConfigBuilder {
+    base_interval: Duration,
+    max_jitter: Duration,
+    fail_topic_creation_on_merge_startup_failure: bool,
+}
+
+// NOTE: Also set in `MessageOverlapMergeConfig::builder()`
+impl Default for MessageOverlapMergeConfig {
+    fn default() -> Self {
+        Self::Enabled {
+            base_interval: Duration::from_secs(60),
+            max_jitter: Duration::from_secs(120),
+            fail_topic_creation_on_merge_startup_failure: true,
+        }
+    }
+}
+
+impl MessageOverlapMergeConfig {
+    pub fn builder() -> MessageOverlapMergeConfigBuilder {
+        MessageOverlapMergeConfigBuilder {
+            base_interval: Duration::from_secs(60),
+            max_jitter: Duration::from_secs(120),
+            fail_topic_creation_on_merge_startup_failure: true,
+        }
+    }
+}
+
+impl MessageOverlapMergeConfigBuilder {
+    /// Base interval for message overlap merge attempts. Default: 60s. Minimum is 1s.
+    pub fn base_interval(mut self, interval: Duration) -> Self {
+        self.base_interval = interval;
+        self
+    }
+
+    /// Max random jitter added to message overlap merge interval. Default: 120s. Minimum is 0s.
+    pub fn max_jitter(mut self, jitter: Duration) -> Self {
+        self.max_jitter = jitter;
+        self
+    }
+
+    /// Whether to fail topic creation if a message overlap merge startup check fails (ret Err()) or just log and run topic without. Default: true.
+    pub fn fail_topic_creation_on_merge_startup_failure(mut self, fail: bool) -> Self {
+        self.fail_topic_creation_on_merge_startup_failure = fail;
+        self
+    }
+
+    /// Build the `MessageOverlapMergeConfig`.
+    pub fn build(self) -> MessageOverlapMergeConfig {
+        MessageOverlapMergeConfig::Enabled {
+            base_interval: self.base_interval,
+            max_jitter: self.max_jitter,
+            fail_topic_creation_on_merge_startup_failure: self
+                .fail_topic_creation_on_merge_startup_failure,
+        }
+    }
+}
+
 /// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
-/// base_interval is minimum 1s, max_jitter is minimum 0s. Default: enabled, 10s initial delay, 10s base interval, 50s jitter.
+/// initial_delay is minimum 0s, base_interval is minimum 1s, max_jitter is minimum 0s, fail_topic_creation_on_merge_startup_failure. Default: enabled, 10s initial delay, 10s base interval, 50s jitter, true.
 #[derive(Debug, Clone)]
 pub enum PublisherConfig {
     Enabled {
         initial_delay: Duration,
         base_interval: Duration,
         max_jitter: Duration,
+        fail_topic_creation_on_publishing_startup_failure: bool,
     },
     Disabled,
 }
 
-/// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
-/// base_interval is minimum 1s, max_jitter is minimum 0s.
 #[derive(Debug, Clone)]
-pub struct MergeConfig {
-    bubble_merge: BubbleMergeConfig,
-    message_overlap_merge: MessageOverlapMergeConfig,
+pub struct PublisherConfigBuilder {
+    initial_delay: Duration,
+    base_interval: Duration,
+    max_jitter: Duration,
+    fail_topic_creation_on_merge_startup_failure: bool,
 }
 
+/// NOTE: Also set in `PublisherConfig::builder()`
 impl Default for PublisherConfig {
     fn default() -> Self {
         Self::Enabled {
             initial_delay: Duration::from_secs(10),
             base_interval: Duration::from_secs(10),
             max_jitter: Duration::from_secs(50),
+            fail_topic_creation_on_publishing_startup_failure: true,
         }
     }
 }
+
+impl PublisherConfig {
+    /// Publisher strategy config. Default: enabled, 10s initial delay, 10s base interval, 50s jitter, true.
+    /// base_interval and initial_delay minimum is 1s, max_jitter is minimum 0s.
+    pub fn builder() -> PublisherConfigBuilder {
+        PublisherConfigBuilder {
+            initial_delay: Duration::from_secs(10),
+            base_interval: Duration::from_secs(10),
+            max_jitter: Duration::from_secs(50),
+            fail_topic_creation_on_merge_startup_failure: true,
+        }
+    }
+}
+
+impl PublisherConfigBuilder {
+    /// Initial delay before starting publisher. Default: 10s. Minimum is 0s.
+    pub fn initial_delay(mut self, delay: Duration) -> Self {
+        self.initial_delay = delay;
+        self
+    }
+
+    /// Base interval for publisher attempts. Default: 10s. Minimum is 1s.
+    pub fn base_interval(mut self, interval: Duration) -> Self {
+        self.base_interval = interval;
+        self
+    }
+
+    /// Max random jitter added to publisher interval. Default: 50s. Minimum is 0s.
+    pub fn max_jitter(mut self, jitter: Duration) -> Self {
+        self.max_jitter = jitter;
+        self
+    }
+
+    /// Whether to fail topic creation if a publisher startup check fails (ret Err()) or just log and run topic without. Default: true.
+    pub fn fail_topic_creation_on_merge_startup_failure(mut self, fail: bool) -> Self {
+        self.fail_topic_creation_on_merge_startup_failure = fail;
+        self
+    }
+
+    /// Build the `PublisherConfig`.
+    pub fn build(self) -> PublisherConfig {
+        PublisherConfig::Enabled {
+            initial_delay: self.initial_delay,
+            base_interval: self.base_interval,
+            max_jitter: self.max_jitter,
+            fail_topic_creation_on_publishing_startup_failure: self
+                .fail_topic_creation_on_merge_startup_failure,
+        }
+    }
+}
+
+/// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
+/// base_interval is minimum 1s, max_jitter is minimum 0s.
+#[derive(Debug, Clone)]
+#[derive(Default)]
+pub struct MergeConfig {
+    bubble_merge: BubbleMergeConfig,
+    message_overlap_merge: MessageOverlapMergeConfig,
+}
+
+
 
 impl MergeConfig {
     /// Defaults: bubble_merge=Enabled(60s base, 120s jitter, 4 min neighbors), message_overlap_merge=Enabled(60s base, 120s jitter).
@@ -239,13 +431,13 @@ impl MergeConfig {
         }
     }
 
-    /// Bubble merge strategy config. Default: enabled, 60s base, 120s jitter, 4 min neighbors.
+    /// Bubble merge strategy config. Default: enabled, 60s base, 120s jitter, 4 min neighbors, true.
     /// base_interval is minimum 1s, max_jitter is minimum 0s.
     pub fn bubble_merge(&self) -> &BubbleMergeConfig {
         &self.bubble_merge
     }
 
-    /// Message overlap merge strategy config. Default: enabled, 60s base, 120s jitter.
+    /// Message overlap merge strategy config. Default: enabled, 60s base, 120s jitter, true.
     /// base_interval is minimum 1s, max_jitter is minimum 0s.
     pub fn message_overlap_merge(&self) -> &MessageOverlapMergeConfig {
         &self.message_overlap_merge
@@ -322,7 +514,7 @@ impl BootstrapConfigBuilder {
     }
 
     /// Whether to check the last minute record unix_minute-1 before the current time window unix_minute on startup (in this impl unix_minute and unix_minute-1 are both always fetched, if this is enabled than we first fetch unix_minute-2 and unix_minute-1).  Default: false.
-    /// 
+    ///
     /// If joining longer running, existing topics is priority, set to true.
     /// If minimizing bootstrap time for cluster cold starts (2+ nodes starting roughly at the same time into a topic without peers), set to false.
     pub fn check_last_minute_record_first_on_startup(mut self, check: bool) -> Self {
@@ -375,7 +567,7 @@ impl BootstrapConfig {
     }
 
     /// Whether to check the last minute record unix_minute-1 before the current time window unix_minute on startup (in this impl unix_minute and unix_minute-1 are both always fetched, if this is enabled than we first fetch unix_minute-2 and unix_minute-1).  Default: false.
-    /// 
+    ///
     /// If joining longer running, existing topics is priority, set to true.
     /// If minimizing bootstrap time for cluster cold starts (2+ nodes starting roughly at the same time into a topic without peers), set to false.
     pub fn check_last_minute_record_first_on_startup(&self) -> bool {
@@ -439,17 +631,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            merge_config: MergeConfig {
-                bubble_merge: BubbleMergeConfig::Enabled {
-                    base_interval: Duration::from_secs(60),
-                    max_jitter: Duration::from_secs(120),
-                    min_neighbors: 4,
-                },
-                message_overlap_merge: MessageOverlapMergeConfig::Enabled {
-                    base_interval: Duration::from_secs(60),
-                    max_jitter: Duration::from_secs(120),
-                },
-            },
+            merge_config: MergeConfig::default(),
             bootstrap_config: BootstrapConfig::default(),
             publisher_config: PublisherConfig::default(),
             dht_config: DhtConfig::default(),

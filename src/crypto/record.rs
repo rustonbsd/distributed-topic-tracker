@@ -1,13 +1,11 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, bail};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
-use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
-use tokio::sync::Mutex;
 
 use crate::{Config, TopicId};
 
@@ -58,43 +56,12 @@ impl RecordContent {
     }
 }
 
-#[derive(Debug, Clone)]
-struct NextDhtSeq {
-    inner: Arc<Mutex<LruCache<u64, i64>>>,
-}
-
-impl Default for NextDhtSeq {
-    fn default() -> Self {
-        Self::new(100).expect("capacity must be > 0")
-    }
-}
-
-impl NextDhtSeq {
-    fn new(capacity: usize) -> Result<Self> {
-        Ok(Self {
-            inner: Arc::new(Mutex::new(LruCache::new(
-                std::num::NonZeroUsize::new(capacity)
-                    .ok_or_else(|| anyhow::anyhow!("capacity must be > 0"))?,
-            ))),
-        })
-    }
-
-    async fn next(&self, unix_minute: u64) -> i64 {
-        let mut guard = self.inner.lock().await;
-        let current_seq = *guard.get(&unix_minute).unwrap_or(&0);
-
-        guard.put(unix_minute, current_seq + 1);
-        current_seq
-    }
-}
-
 /// Publisher for creating and distributing signed DHT records.
 ///
 /// Checks existing DHT record count before publishing to respect capacity limits.
 #[derive(Debug, Clone)]
 pub struct RecordPublisher {
     dht: crate::dht::Dht,
-    dht_seq: NextDhtSeq,
 
     config: crate::config::Config,
 
@@ -180,7 +147,6 @@ impl RecordPublisher {
 
         Self {
             dht: crate::dht::Dht::new(config.dht_config()),
-            dht_seq: NextDhtSeq::default(),
             config,
             topic_id: topic_id.into(),
             pub_key: signing_key.verifying_key(),
@@ -292,10 +258,10 @@ impl RecordPublisher {
             record.unix_minute,
         );
         let encrypted_record = record.encrypt(&encryption_key);
-        let next_seq_num = self.dht_seq.next(record.unix_minute()).await;
+        let next_seq_num = i64::MAX;
 
         tracing::debug!(
-            "RecordPublisher: publishing record to DHT for unix_minute {} with seq_num {next_seq_num}",
+            "RecordPublisher: publishing record to DHT for unix_minute {}",
             record.unix_minute()
         );
 
@@ -342,18 +308,19 @@ impl RecordPublisher {
             records_iter.len()
         );
 
-        let mut dedubed_records: Vec<(i64, Record)> = vec![];
+        let mut dedubed_records = HashMap::new();
         for item in records_iter.clone() {
             if let Ok(encrypted_record) = EncryptedRecord::from_bytes(item.value().to_vec())
                 && let Ok(record) = encrypted_record.decrypt(&encryption_key)
                 && record.verify(&self.topic_id.hash(), unix_minute).is_ok()
                 && !record.pub_key().eq(self.pub_key.as_bytes())
             {
-                if !dedubed_records
-                    .iter()
-                    .any(|(seq, r)| r.pub_key() == record.pub_key() && *seq >= item.seq())
-                {
-                    dedubed_records.push((item.seq(), record));
+                let pub_key = record.pub_key();
+                match dedubed_records.get(&pub_key) {
+                    Some((seq, _)) if *seq >= item.seq() => {}
+                    _ => {
+                        dedubed_records.insert(pub_key, (item.seq(), record));
+                    }
                 }
             }
         }
@@ -363,7 +330,7 @@ impl RecordPublisher {
         );
 
         Ok(dedubed_records
-            .into_iter()
+            .into_values()
             .map(|(_, record)| record)
             .collect::<HashSet<_>>())
     }
