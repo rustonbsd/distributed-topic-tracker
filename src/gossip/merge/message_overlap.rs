@@ -131,44 +131,44 @@ impl MessageOverlapMergeActor {
 
             if !peers_to_join.is_empty() {
                 let active_neighbors = self.gossip_receiver.neighbors().await?;
-                let node_ids = peers_to_join
+                let pub_keys = peers_to_join
                     .iter()
                     .flat_map(|&record| {
                         let mut peers = vec![];
-                        if let Ok(endpoint_id) = EndpointId::from_bytes(&record.node_id())
-                            && endpoint_id
+                        if let Ok(pub_key) = EndpointId::from_bytes(&record.pub_key())
+                            && pub_key
                                 != EndpointId::from_verifying_key(self.record_publisher.pub_key())
                         {
-                            peers.push(endpoint_id);
+                            peers.push(pub_key);
                         }
                         if let Ok(content) = record.content::<GossipRecordContent>() {
                             for active_peer in content.active_peers {
                                 if active_peer == [0; 32] {
                                     continue;
                                 }
-                                if let Ok(endpoint_id) = EndpointId::from_bytes(&active_peer)
-                                    && endpoint_id
+                                if let Ok(pub_key) = EndpointId::from_bytes(&active_peer)
+                                    && pub_key
                                         != EndpointId::from_verifying_key(
                                             self.record_publisher.pub_key(),
                                         )
                                 {
-                                    peers.push(endpoint_id);
+                                    peers.push(pub_key);
                                 }
                             }
                         }
                         peers
                     })
-                    .filter(|node_id| !active_neighbors.contains(node_id))
+                    .filter(|pub_key| !active_neighbors.contains(pub_key))
                     .collect::<HashSet<_>>();
 
                 tracing::debug!(
-                    "MessageOverlapMerge: attempting to join {} node_ids with no overlapping messages",
-                    node_ids.len()
+                    "MessageOverlapMerge: attempting to join {} pub_keys with no overlapping messages",
+                    pub_keys.len()
                 );
 
                 self.gossip_sender
                     .join_peers(
-                        node_ids.iter().cloned().collect::<Vec<_>>(),
+                        pub_keys.iter().cloned().collect::<Vec<_>>(),
                         Some(self.max_join_peers),
                     )
                     .await?;

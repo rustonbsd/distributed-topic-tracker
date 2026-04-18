@@ -218,12 +218,12 @@ impl GossipReceiverActor {
                                     }
                                     self.join_channel_sender.send(Some(())).ok();
                                 }
-                                iroh_gossip::api::Event::NeighborUp(node_id) => {
-                                    tracing::debug!("GossipReceiver: neighbor UP: {}", node_id);
+                                iroh_gossip::api::Event::NeighborUp(pub_key) => {
+                                    tracing::debug!("GossipReceiver: neighbor UP: {}", pub_key);
                                     self.join_channel_sender.send(Some(())).ok();
                                 }
-                                iroh_gossip::api::Event::NeighborDown(node_id) => {
-                                    tracing::debug!("GossipReceiver: neighbor DOWN: {}", node_id);
+                                iroh_gossip::api::Event::NeighborDown(pub_key) => {
+                                    tracing::debug!("GossipReceiver: neighbor DOWN: {}", pub_key);
                                 }
                                 iroh_gossip::api::Event::Lagged => {
                                     tracing::debug!("GossipReceiver: event stream lagged");

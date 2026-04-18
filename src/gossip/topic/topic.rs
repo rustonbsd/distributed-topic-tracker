@@ -71,7 +71,7 @@ impl TopicId {
     }
 
     /// Create from a pre-computed 32-byte hash.
-    pub fn from_bytes(bytes: &[u8; 32]) -> Self {
+    pub fn from_hash(bytes: &[u8; 32]) -> Self {
         Self(*bytes)
     }
 
