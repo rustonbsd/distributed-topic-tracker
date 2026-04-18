@@ -38,8 +38,7 @@ async fn main() -> Result<()> {
         // [!] Disable merge workers (BubbleMerge and MessageOverlapMerge)
         Config::builder().merge_config(MergeConfig::new(BubbleMergeConfig::Disabled, MessageOverlapMergeConfig::Disabled)).build(),
     );
-
-    // Split into sink (sending) and stream (receiving)
+    
     let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?;

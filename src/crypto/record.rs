@@ -281,7 +281,7 @@ impl RecordPublisher {
     /// Retrieve all verified records for a given time slot from the DHT.
     ///
     /// Filters out records from this publisher's own node ID.
-    /// Dedub's records based on pub_key, keeping the newest sequence number per pub_key.
+    /// Dedup's records based on pub_key, keeping the highest sequence number per pub_key.
     pub async fn get_records(&self, unix_minute: u64) -> Result<HashSet<Record>> {
         tracing::debug!(
             "RecordPublisher: fetching records from DHT for unix_minute {}",
@@ -359,6 +359,10 @@ impl EncryptedRecord {
         buf.extend_from_slice(&encrypted_record_len.to_le_bytes());
         buf.extend_from_slice(&self.encrypted_record);
         buf.extend_from_slice(&self.encrypted_decryption_key);
+
+        if buf.len() > Self::MAX_SIZE {
+            unreachable!("EncryptedRecord serialization exceeds maximum size, the max is set generously so this should never happen, if so your code is using it manually");
+        }
         buf
     }
 

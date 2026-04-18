@@ -241,7 +241,9 @@ flowchart TD
   T[topic_hash] --> A[SHA512 topic+minute]
   M[unix_minute] --> A
   A --> S[signing_keypair seed -> Ed25519]
-  A --> L[salt = first 32 bytes]
+
+  T --> L["salt = SHA512('salt' + topic + minute)[..32]"]
+  M --> L
 
   T --> R[secret_rotation topic,minute,initial_secret_hash]
   M --> R

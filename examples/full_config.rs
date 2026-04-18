@@ -46,6 +46,7 @@ fn config_builder() -> Config {
         )
         .merge_config(MergeConfig::new(
             BubbleMergeConfig::builder()
+                .min_neighbors(4)
                 .base_interval(Duration::from_secs(60))
                 .max_jitter(Duration::from_secs(120))
                 .fail_topic_creation_on_merge_startup_failure(true)
@@ -95,7 +96,6 @@ async fn main() -> Result<()> {
             .secret_rotation(RotationHandle::new(DefaultSecretRotation))
             .build();
 
-    // Split into sink (sending) and stream (receiving)
     let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?;
