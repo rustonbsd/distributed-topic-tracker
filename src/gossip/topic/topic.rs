@@ -260,7 +260,8 @@ async fn wait_for_bootstrap_and_spawn_workers(
             match api.upgrade() {
                 Some(api) => {
                     if let Err(err) = api.call(act!(actor => actor.start_bubble_merge())).await {
-                        tracing::warn!("Topic: failed to start bubble merge: {err}");
+                        cancel_token.cancel();
+                        return Err(anyhow::anyhow!("failed to start bubble merge: {err}"));
                     }
                 }
                 None => {
@@ -285,7 +286,10 @@ async fn wait_for_bootstrap_and_spawn_workers(
                         .call(act!(actor => actor.start_message_overlap_merge()))
                         .await
                     {
-                        tracing::warn!("Topic: failed to start message overlap merge: {err}");
+                        cancel_token.cancel();
+                        return Err(anyhow::anyhow!(
+                            "failed to start message overlap merge: {err}"
+                        ));
                     }
                 }
                 None => {
@@ -310,6 +314,7 @@ impl TopicActor {
             initial_delay,
             base_interval,
             max_jitter,
+            fail_topic_creation_on_publishing_startup_failure,
         } = self.record_publisher.config().publisher_config()
         {
             tracing::debug!("TopicActor: initializing publisher");
@@ -320,9 +325,24 @@ impl TopicActor {
                 *initial_delay,
                 *base_interval,
                 *max_jitter,
-            )?;
-            self.publisher = Some(publisher);
-            tracing::debug!("TopicActor: publisher started");
+            );
+
+            match publisher {
+                Ok(publisher) => {
+                    self.publisher = Some(publisher);
+                    tracing::debug!("TopicActor: publisher started");
+                },
+                Err(err) => {
+                    if *fail_topic_creation_on_publishing_startup_failure {
+                        return Err(anyhow::anyhow!("failed to start publisher: {}", err));
+                    } else {
+                        tracing::warn!(
+                            "TopicActor: failed to start publisher: {}, but continuing because Publisher.fail_topic_creation_on_publishing_startup_failure is false",
+                            err
+                        );
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -332,6 +352,7 @@ impl TopicActor {
             base_interval,
             max_jitter,
             min_neighbors,
+            fail_topic_creation_on_merge_startup_failure,
         } = self.record_publisher.config().merge_config().bubble_merge()
         {
             tracing::debug!("TopicActor: initializing bubble merge");
@@ -344,9 +365,24 @@ impl TopicActor {
                 *base_interval,
                 *max_jitter,
                 *min_neighbors,
-            )?;
-            self.bubble_merge = Some(bubble_merge);
-            tracing::debug!("TopicActor: bubble merge started");
+            );
+
+            match bubble_merge {
+                Ok(bubble_merge) => {
+                    self.bubble_merge = Some(bubble_merge);
+                    tracing::debug!("TopicActor: bubble merge started");
+                }
+                Err(err) => {
+                    if *fail_topic_creation_on_merge_startup_failure {
+                        return Err(anyhow::anyhow!("failed to start bubble merge: {}", err));
+                    } else {
+                        tracing::warn!(
+                            "TopicActor: failed to start bubble merge: {}, but continuing because BubbleMerge.fail_topic_creation_on_merge_startup_failure is false",
+                            err
+                        );
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -355,6 +391,7 @@ impl TopicActor {
         if let MessageOverlapMergeConfig::Enabled {
             base_interval,
             max_jitter,
+            fail_topic_creation_on_merge_startup_failure,
         } = self
             .record_publisher
             .config()
@@ -370,9 +407,26 @@ impl TopicActor {
                 self.record_publisher.config().max_join_peer_count().max(1),
                 *base_interval,
                 *max_jitter,
-            )?;
-            self.message_overlap_merge = Some(message_overlap_merge);
-            tracing::debug!("TopicActor: message overlap merge started");
+            );
+            match message_overlap_merge {
+                Ok(message_overlap_merge) => {
+                    self.message_overlap_merge = Some(message_overlap_merge);
+                    tracing::debug!("TopicActor: message overlap merge started");
+                }
+                Err(err) => {
+                    if *fail_topic_creation_on_merge_startup_failure {
+                        return Err(anyhow::anyhow!(
+                            "failed to start message overlap merge: {}",
+                            err
+                        ));
+                    } else {
+                        tracing::warn!(
+                            "TopicActor: failed to start message overlap merge: {}, but continuing because MessageOverlapMerge.fail_topic_creation_on_merge_startup_failure is false",
+                            err
+                        );
+                    }
+                }
+            }
         }
         Ok(())
     }

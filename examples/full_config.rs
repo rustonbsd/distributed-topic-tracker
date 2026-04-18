@@ -37,21 +37,24 @@ fn config_builder() -> Config {
                 .build(),
         )
         .max_join_peer_count(4)
-        .publisher_config(PublisherConfig::Enabled {
-            initial_delay: Duration::from_secs(10),
-            base_interval: Duration::from_secs(10),
-            max_jitter: Duration::from_secs(50),
-        })
+        .publisher_config(
+            PublisherConfig::builder()
+                .initial_delay(Duration::from_secs(10))
+                .base_interval(Duration::from_secs(10))
+                .max_jitter(Duration::from_secs(50))
+                .build(),
+        )
         .merge_config(MergeConfig::new(
-            BubbleMergeConfig::Enabled {
-                base_interval: Duration::from_secs(60),
-                max_jitter: Duration::from_secs(120),
-                min_neighbors: 4,
-            },
-            MessageOverlapMergeConfig::Enabled {
-                base_interval: Duration::from_secs(60),
-                max_jitter: Duration::from_secs(120),
-            },
+            BubbleMergeConfig::builder()
+                .base_interval(Duration::from_secs(60))
+                .max_jitter(Duration::from_secs(120))
+                .fail_topic_creation_on_merge_startup_failure(true)
+                .build(),
+            MessageOverlapMergeConfig::builder()
+                .base_interval(Duration::from_secs(60))
+                .max_jitter(Duration::from_secs(120))
+                .fail_topic_creation_on_merge_startup_failure(true)
+                .build(),
         ))
         .timeouts(
             TimeoutConfig::builder()

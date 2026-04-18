@@ -114,10 +114,17 @@ impl MessageOverlapMergeActor {
                 .iter()
                 .filter(|record| {
                     if let Ok(content) = record.content::<GossipRecordContent>() {
-                        content.last_message_hashes.iter().any(|last_message_hash| {
-                            *last_message_hash != [0; 32]
-                                && !last_message_hashes.contains(last_message_hash)
-                        })
+                        let remote_hashes = content
+                            .last_message_hashes
+                            .iter()
+                            .filter(|last_message_hash| **last_message_hash != [0; 32])
+                            .collect::<Vec<_>>();
+
+                        !remote_hashes.is_empty()
+                            && !last_message_hashes.is_empty()
+                            && remote_hashes.iter().all(|last_message_hash| {
+                                !last_message_hashes.contains(*last_message_hash)
+                            })
                     } else {
                         false
                     }

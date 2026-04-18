@@ -13,8 +13,9 @@ pub use gossip::{
 };
 
 pub use config::{
-    BootstrapConfig, BubbleMergeConfig, Config, ConfigBuilder, DhtConfig, MergeConfig,
-    MessageOverlapMergeConfig, PublisherConfig, TimeoutConfig, TimeoutConfigBuilder,
+    BootstrapConfig, BubbleMergeConfig, BubbleMergeConfigBuilder, Config, ConfigBuilder, DhtConfig,
+    MergeConfig, MessageOverlapMergeConfig, MessageOverlapMergeConfigBuilder, PublisherConfig,
+    PublisherConfigBuilder, TimeoutConfig, TimeoutConfigBuilder,
 };
 pub use crypto::{
     DefaultSecretRotation, EncryptedRecord, Record, RecordPublisher, RotationHandle,
