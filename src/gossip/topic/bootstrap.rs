@@ -125,7 +125,7 @@ impl BootstrapActor {
 
             async move {
                 tracing::debug!("Bootstrap: starting bootstrap process");
-                while !cancel_token.is_cancelled() {
+                'bootstrap: while !cancel_token.is_cancelled() {
                     // Check if we are connected to at least one node
                     let is_joined = gossip_receiver.is_joined().await;
                     if let Ok(is_joined) = is_joined
@@ -153,8 +153,14 @@ impl BootstrapActor {
                     );
 
                     // Unique, verified records for the unix minute
-                    let mut records = record_publisher.get_records(unix_minute - 1).await;
-                    let current_records = record_publisher.get_records(unix_minute).await;
+                    let mut records = record_publisher
+                        .get_records(unix_minute - 1)
+                        .await
+                        .unwrap_or_default();
+                    let current_records = record_publisher
+                        .get_records(unix_minute)
+                        .await
+                        .unwrap_or_default();
                     records.extend(current_records.clone());
 
                     tracing::debug!(
@@ -251,7 +257,7 @@ impl BootstrapActor {
                                 tokio::select! {
                                     _ = sleep(bootstrap_config.per_peer_join_settle_time()) => {}
                                     _ = gossip_receiver.joined() => {},
-                                    _ = cancel_token.cancelled() => break,
+                                    _ = cancel_token.cancelled() => break 'bootstrap,
                                 }
                                 let is_joined = gossip_receiver.is_joined().await;
                                 if let Ok(is_joined) = is_joined

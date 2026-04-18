@@ -8,7 +8,7 @@ homepage = "https://rustonbsd.github.io/2025/09/03/distributed-topic-tracker.htm
 readme = "README.md"
 keywords = ["networking"]
 categories = ["network-programming"]
-version = "0.2.8"
+version = "0.3.0"
 edition = "2024"
 
 [features]
@@ -38,6 +38,7 @@ rand = { version = "0.9", default-features = false, features = ["std", "std_rng"
 actor-helper = { version = "0.3", features = ["tokio", "anyhow"] }
 postcard = "1"
 serde = { version = "1", default-features = false, features = ["std"] }
+lru = { version = "0.17" }
 
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "env-filter", "ansi"] }

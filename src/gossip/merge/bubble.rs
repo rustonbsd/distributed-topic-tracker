@@ -108,8 +108,8 @@ impl BubbleMergeActor {
     // Cluster size as bubble indicator
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let mut records = self.record_publisher.get_records(unix_minute - 1).await;
-        records.extend(self.record_publisher.get_records(unix_minute).await);
+        let mut records = self.record_publisher.get_records(unix_minute - 1).await?;
+        records.extend(self.record_publisher.get_records(unix_minute).await?);
 
         let neighbors = self.gossip_receiver.neighbors().await?;
         tracing::debug!(
@@ -127,8 +127,7 @@ impl BubbleMergeActor {
             let pub_keys = records
                 .iter()
                 .flat_map(|record| {
-                    let mut pub_keys = if let Ok(content) =
-                        record.content::<GossipRecordContent>()
+                    let mut pub_keys = if let Ok(content) = record.content::<GossipRecordContent>()
                     {
                         content
                             .active_peers
@@ -151,6 +150,7 @@ impl BubbleMergeActor {
                     if let Ok(pub_key) = EndpointId::from_bytes(&record.pub_key())
                         && pub_key
                             != EndpointId::from_verifying_key(self.record_publisher.pub_key())
+                        && !neighbors.contains(&pub_key)
                     {
                         pub_keys.push(pub_key);
                     }

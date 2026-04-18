@@ -1,6 +1,9 @@
 //! Main topic handle combining bootstrap, publishing, and merging.
 
-use std::{str::FromStr, sync::Arc};
+use std::{
+    str::FromStr,
+    sync::{Arc, Weak},
+};
 
 use crate::{
     BubbleMergeConfig, GossipSender, MessageOverlapMergeConfig,
@@ -87,7 +90,7 @@ impl TopicId {
 /// Can be split into sender and receiver for message exchange.
 #[derive(Debug, Clone)]
 pub struct Topic {
-    api: Handle<TopicActor, anyhow::Error>,
+    api: Arc<Handle<TopicActor, anyhow::Error>>,
     cancel_token: CancellationToken,
 }
 
@@ -136,54 +139,50 @@ impl Topic {
         .await?;
         tracing::debug!("Topic: bootstrap instance created");
 
-        let api = Handle::spawn(TopicActor {
-            bootstrap: bootstrap.clone(),
-            record_publisher: record_publisher.clone(),
-            publisher: None,
-            bubble_merge: None,
-            message_overlap_merge: None,
-            cancel_token: cancel_token.clone(),
-        })
-        .0;
+        let api = Arc::new(
+            Handle::spawn(TopicActor {
+                bootstrap: bootstrap.clone(),
+                record_publisher: record_publisher.clone(),
+                publisher: None,
+                bubble_merge: None,
+                message_overlap_merge: None,
+                cancel_token: cancel_token.clone(),
+            })
+            .0,
+        );
 
         let bootstrap_done = bootstrap.bootstrap().await?;
         if !async_bootstrap {
             tracing::debug!("Topic: waiting for bootstrap to complete");
-            bootstrap_done.await??;
+
+            wait_for_bootstrap_and_spawn_workers(
+                Arc::downgrade(&api),
+                bootstrap_done,
+                record_publisher.clone(),
+                cancel_token.clone(),
+            )
+            .await?;
             tracing::debug!("Topic: bootstrap completed");
         } else {
             tracing::debug!("Topic: bootstrap started asynchronously");
+            tokio::spawn({
+                let api = Arc::downgrade(&api);
+                let cancel_token = cancel_token.clone();
+                async move {
+                    if let Err(err) = wait_for_bootstrap_and_spawn_workers(
+                        api,
+                        bootstrap_done,
+                        record_publisher.clone(),
+                        cancel_token.clone(),
+                    )
+                    .await
+                    {
+                        tracing::error!("failed to start topic: {}", err);
+                    }
+                }
+            });
         }
 
-        if matches!(
-            record_publisher.config().publisher_config(),
-            PublisherConfig::Enabled { .. }
-        ) {
-            tracing::debug!("Topic: starting publisher");
-            api.call(act!(actor => actor.start_publishing())).await?;
-        }
-
-        if matches!(
-            record_publisher.config().merge_config().bubble_merge(),
-            BubbleMergeConfig::Enabled { .. }
-        ) {
-            tracing::debug!("Topic: starting bubble merge");
-            api.call(act!(actor => actor.start_bubble_merge())).await?;
-        }
-
-        if matches!(
-            record_publisher
-                .config()
-                .merge_config()
-                .message_overlap_merge(),
-            MessageOverlapMergeConfig::Enabled { .. }
-        ) {
-            tracing::debug!("Topic: starting message overlap merge");
-            api.call(act!(actor => actor.start_message_overlap_merge()))
-                .await?;
-        }
-
-        tracing::debug!("Topic: fully initialized");
         Ok(Self { api, cancel_token })
     }
 
@@ -221,6 +220,87 @@ impl Topic {
     #[allow(dead_code)]
     pub(crate) fn cancel_token(&self) -> CancellationToken {
         self.cancel_token.clone()
+    }
+}
+
+async fn wait_for_bootstrap_and_spawn_workers(
+    api: Weak<Handle<TopicActor, anyhow::Error>>,
+    bootstrap_done: tokio::sync::oneshot::Receiver<Result<()>>,
+    record_publisher: crate::crypto::RecordPublisher,
+    cancel_token: CancellationToken,
+) -> Result<()> {
+    if let Ok(Ok(_)) = bootstrap_done.await
+        && !cancel_token.is_cancelled()
+    {
+        if matches!(
+            record_publisher.config().publisher_config(),
+            PublisherConfig::Enabled { .. }
+        ) {
+            tracing::debug!("Topic: starting publisher");
+            match api.upgrade() {
+                Some(api) => {
+                    if let Err(err) = api.call(act!(actor => actor.start_publishing())).await {
+                        cancel_token.cancel();
+                        return Err(anyhow::anyhow!("failed to start publisher: {err}"));
+                    }
+                }
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "failed to start publisher, topic actor dropped"
+                    ));
+                }
+            }
+        }
+
+        if matches!(
+            record_publisher.config().merge_config().bubble_merge(),
+            BubbleMergeConfig::Enabled { .. }
+        ) {
+            tracing::debug!("Topic: starting bubble merge");
+            match api.upgrade() {
+                Some(api) => {
+                    if let Err(err) = api.call(act!(actor => actor.start_bubble_merge())).await {
+                        tracing::warn!("Topic: failed to start bubble merge: {err}");
+                    }
+                }
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "failed to start bubble merge, topic actor dropped"
+                    ));
+                }
+            }
+        }
+
+        if matches!(
+            record_publisher
+                .config()
+                .merge_config()
+                .message_overlap_merge(),
+            MessageOverlapMergeConfig::Enabled { .. }
+        ) {
+            tracing::debug!("Topic: starting message overlap merge");
+            match api.upgrade() {
+                Some(api) => {
+                    if let Err(err) = api
+                        .call(act!(actor => actor.start_message_overlap_merge()))
+                        .await
+                    {
+                        tracing::warn!("Topic: failed to start message overlap merge: {err}");
+                    }
+                }
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "failed to start message overlap merge, topic actor dropped"
+                    ));
+                }
+            }
+        }
+        tracing::debug!("Topic: fully initialized");
+        Ok(())
+    } else {
+        tracing::error!("Topic: bootstrap failed or cancelled, shutting down topic");
+        cancel_token.cancel();
+        Err(anyhow::anyhow!("bootstrap failed or cancelled"))
     }
 }
 
@@ -345,10 +425,7 @@ mod tests {
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), survivor.joined())
             .await
             .expect("joined() hung after shutdown - broadcast channel didn't close");
-        assert!(
-            result.is_err(),
-            "expected Err from joined() after shutdown"
-        );
+        assert!(result.is_err(), "expected Err from joined() after shutdown");
 
         // A clone made after shutdown must also return Err immediately
         // (WeakSender::upgrade fails -> gets an already closed channel)
@@ -399,7 +476,7 @@ mod tests {
 
         let cancel_token = topic.cancel_token();
 
-        let (sender, receiver) = topic.split().await.unwrap();
+        let (sender, receiver) = topic.split().await.expect("failed to split topic");
 
         assert!(!cancel_token.is_cancelled());
 

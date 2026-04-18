@@ -144,10 +144,10 @@ impl PublisherActor {
         let record = res?;
         let result = self.record_publisher.publish_record(record).await;
 
-        if result.is_ok() {
-            tracing::debug!("Publisher: successfully published record");
+        if let Err(ref e) = result {
+            tracing::debug!("Publisher: failed to publish record: {:?}", e);
         } else {
-            tracing::debug!("Publisher: failed to publish record: {:?}", result);
+            tracing::debug!("Publisher: successfully published record");
         }
 
         result

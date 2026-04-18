@@ -65,18 +65,18 @@ impl Dht {
     /// # Arguments
     ///
     /// * `signing_key` - Ed25519 secret key for signing
-    /// * `pub_key` - Ed25519 public key (used for routing)
     /// * `salt` - Optional salt for record slot
     /// * `data` - Record value to publish
+    /// * `next_unix_minute_seq` - Sequence number for the record (per unix_minute)
     pub async fn put_mutable(
         &self,
         signing_key: SigningKey,
-        pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         data: Vec<u8>,
+        next_unix_minute_seq: i64,
     ) -> Result<()> {
         self.api
-            .call(act!(actor => actor.put_mutable(signing_key, pub_key, salt, data)))
+            .call(act!(actor => actor.put_mutable(signing_key, salt, data, next_unix_minute_seq)))
             .await
     }
 }
@@ -111,9 +111,9 @@ impl DhtActor {
     pub async fn put_mutable(
         &mut self,
         signing_key: SigningKey,
-        pub_key: VerifyingKey,
         salt: Option<Vec<u8>>,
         data: Vec<u8>,
+        next_unix_minute_seq: i64,
     ) -> Result<()> {
         if self.dht.is_none() {
             self.reset().await?;
@@ -122,22 +122,12 @@ impl DhtActor {
         for i in 0..1 + self.config.retries() {
             let dht = self.dht.as_mut().context("DHT not initialized")?;
 
-            let most_recent_result = tokio::time::timeout(
-                self.config.put_timeout(),
-                dht.get_mutable_most_recent(pub_key.as_bytes(), salt.as_deref()),
-            )
-            .await?;
-
-            let item = if let Some(mut_item) = most_recent_result {
-                MutableItem::new(
-                    signing_key.clone(),
-                    &data,
-                    mut_item.seq() + 1,
-                    salt.as_deref(),
-                )
-            } else {
-                MutableItem::new(signing_key.clone(), &data, 0, salt.as_deref())
-            };
+            let item = MutableItem::new(
+                signing_key.clone(),
+                &data,
+                next_unix_minute_seq,
+                salt.as_deref(),
+            );
 
             let put_result = match tokio::time::timeout(
                 self.config.put_timeout(),
@@ -145,7 +135,13 @@ impl DhtActor {
             )
             .await
             {
-                Ok(result) => result.ok(),
+                Ok(result) => match result {
+                    Ok(id) => Some(id),
+                    Err(err) => {
+                        tracing::warn!("DHT put_mutable operation failed: {err:?}");
+                        None
+                    }
+                },
                 Err(_) => None,
             };
 
