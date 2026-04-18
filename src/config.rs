@@ -134,7 +134,7 @@ impl DhtConfig {
         }
     }
 
-    /// Number of DHT operation retry attempts (first attempt + retries). Default: 3.
+    /// Number of retries after the initial attempt (total attempts = 1 + retries). Default: 3.
     pub fn retries(&self) -> usize {
         self.retries
     }
@@ -324,7 +324,7 @@ impl MessageOverlapMergeConfigBuilder {
 }
 
 /// Effective interval is `(base_interval + jitter).max(1000ms)`, where `jitter` is sampled in `[0, max_jitter)`.
-/// initial_delay is minimum 0s, base_interval is minimum 1s, max_jitter is minimum 0s, fail_topic_creation_on_merge_startup_failure. Default: enabled, 10s initial delay, 10s base interval, 50s jitter, true.
+/// initial_delay is minimum 0s, base_interval is minimum 1s, max_jitter is minimum 0s, fail_topic_creation_on_publishing_startup_failure. Default: enabled, 10s initial delay, 10s base interval, 50s jitter, true.
 #[derive(Debug, Clone)]
 pub enum PublisherConfig {
     Enabled {
@@ -341,7 +341,7 @@ pub struct PublisherConfigBuilder {
     initial_delay: Duration,
     base_interval: Duration,
     max_jitter: Duration,
-    fail_topic_creation_on_merge_startup_failure: bool,
+    fail_topic_creation_on_publishing_startup_failure: bool,
 }
 
 /// NOTE: Also set in `PublisherConfig::builder()`
@@ -358,13 +358,13 @@ impl Default for PublisherConfig {
 
 impl PublisherConfig {
     /// Publisher strategy config. Default: enabled, 10s initial delay, 10s base interval, 50s jitter, true.
-    /// base_interval and initial_delay minimum is 1s, max_jitter is minimum 0s.
+    /// base_interval minimum is 1s, initial_delay minimum is 0s, max_jitter is minimum 0s.
     pub fn builder() -> PublisherConfigBuilder {
         PublisherConfigBuilder {
             initial_delay: Duration::from_secs(10),
             base_interval: Duration::from_secs(10),
             max_jitter: Duration::from_secs(50),
-            fail_topic_creation_on_merge_startup_failure: true,
+            fail_topic_creation_on_publishing_startup_failure: true,
         }
     }
 }
@@ -389,8 +389,8 @@ impl PublisherConfigBuilder {
     }
 
     /// Whether to fail topic creation if a publisher startup check fails (ret Err()) or just log and run topic without. Default: true.
-    pub fn fail_topic_creation_on_merge_startup_failure(mut self, fail: bool) -> Self {
-        self.fail_topic_creation_on_merge_startup_failure = fail;
+    pub fn fail_topic_creation_on_publishing_startup_failure(mut self, fail: bool) -> Self {
+        self.fail_topic_creation_on_publishing_startup_failure = fail;
         self
     }
 
@@ -401,7 +401,7 @@ impl PublisherConfigBuilder {
             base_interval: self.base_interval,
             max_jitter: self.max_jitter,
             fail_topic_creation_on_publishing_startup_failure: self
-                .fail_topic_creation_on_merge_startup_failure,
+                .fail_topic_creation_on_publishing_startup_failure,
         }
     }
 }
@@ -655,7 +655,7 @@ impl ConfigBuilder {
     }
 
     /// Publisher strategy config. Default: enabled, 10s initial delay, 10s base interval, 50s jitter.
-    /// base_interval and initial_delay minimum is 1s, max_jitter is minimum 0s.
+    /// base_interval minimum is 1s, initial_delay minimum is 0s, max_jitter is minimum 0s.
     pub fn publisher_config(mut self, publisher_config: PublisherConfig) -> Self {
         self.config.publisher_config = publisher_config;
         self

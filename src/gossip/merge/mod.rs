@@ -2,8 +2,8 @@
 //!
 //! Two complementary strategies detect and heal split-brain scenarios:
 //! - **Bubble Merge**: Joins small clusters (< `min_neighbors` peers, as configured in `BubbleMergeConfig::Enabled`) with peers advertised in DHT
-//! - **Message Overlap**: Detects when isolated clusters share common message hashes,
-//!   indicating they have seen the same messages and can be merged
+//! - **Message Overlap**: Detects when isolated clusters have no common message hashes,
+//!   indicating a network partition that should be healed by merging
 
 mod bubble;
 mod message_overlap;

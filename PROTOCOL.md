@@ -40,7 +40,7 @@ The publishing procedure is a rate-limited mechanism that prevents DHT overload 
    - Publish to DHT via `Dht::put_mutable()` with retry support
 
 5. **Error Handling**
-   - DHT timeouts return empty record sets (non-fatal)
+   - DHT timeouts return error after retries are exhausted
    - Failed record decryption/verification are ignored
    - DHT put retries with jittered intervals prevent synchronized access patterns
 

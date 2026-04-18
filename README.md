@@ -189,59 +189,63 @@ let topic = TopicId::new(raw.clone());
 
 All timing, retry, and threshold parameters are now configurable:
 
-```rust,ignore
-use distributed_topic_tracker::{
-    Config, BootstrapConfig, DhtConfig, TimeoutConfig,
-    PublisherConfig, BubbleMergeConfig, MessageOverlapMergeConfig, MergeConfig,
-};
+```rust,no_run
 use std::time::Duration;
+use distributed_topic_tracker::{
+    Config, DhtConfig, BootstrapConfig, PublisherConfig, MergeConfig, 
+    BubbleMergeConfig, MessageOverlapMergeConfig, TimeoutConfig,
+};
 
 Config::builder()
-        .dht_config(
-            DhtConfig::builder()
-                .retries(3)
-                .base_retry_interval(Duration::from_secs(5))
-                .max_retry_jitter(Duration::from_secs(10))
-                .get_timeout(Duration::from_secs(10))
-                .put_timeout(Duration::from_secs(10))
-                .build(),
-        )
-        .bootstrap_config(
-            BootstrapConfig::builder()
-                .max_bootstrap_records(5)
-                .publish_record_on_startup(true)
-                .check_last_minute_record_first_on_startup(false)
-                .discovery_poll_interval(Duration::from_millis(2000))
-                .no_peers_retry_interval(Duration::from_millis(1500))
-                .per_peer_join_settle_time(Duration::from_millis(100))
-                .join_confirmation_wait_time(Duration::from_millis(500))
-                .build(),
-        )
-        .max_join_peer_count(4)
-        .publisher_config(PublisherConfig::Enabled {
-            initial_delay: Duration::from_secs(10),
-            base_interval: Duration::from_secs(10),
-            max_jitter: Duration::from_secs(50),
-        })
-        .merge_config(MergeConfig::new(
-            BubbleMergeConfig::Enabled {
-                base_interval: Duration::from_secs(60),
-                max_jitter: Duration::from_secs(120),
-                min_neighbors: 4,
-            },
-            MessageOverlapMergeConfig::Enabled {
-                base_interval: Duration::from_secs(60),
-                max_jitter: Duration::from_secs(120),
-            },
-        ))
-        .timeouts(
-            TimeoutConfig::builder()
-                .join_peer_timeout(Duration::from_secs(5))
-                .broadcast_neighbors_timeout(Duration::from_secs(5))
-                .broadcast_timeout(Duration::from_secs(5))
-                .build(),
-        )
-        .build();
+    .dht_config(
+        DhtConfig::builder()
+            .retries(3)
+            .base_retry_interval(Duration::from_secs(5))
+            .max_retry_jitter(Duration::from_secs(10))
+            .get_timeout(Duration::from_secs(10))
+            .put_timeout(Duration::from_secs(10))
+            .build(),
+    )
+    .bootstrap_config(
+        BootstrapConfig::builder()
+            .max_bootstrap_records(5)
+            .publish_record_on_startup(true)
+            .check_last_minute_record_first_on_startup(false)
+            .discovery_poll_interval(Duration::from_millis(2000))
+            .no_peers_retry_interval(Duration::from_millis(1500))
+            .per_peer_join_settle_time(Duration::from_millis(100))
+            .join_confirmation_wait_time(Duration::from_millis(500))
+            .build(),
+    )
+    .max_join_peer_count(4)
+    .publisher_config(
+        PublisherConfig::builder()
+            .initial_delay(Duration::from_secs(10))
+            .base_interval(Duration::from_secs(10))
+            .max_jitter(Duration::from_secs(50))
+            .build(),
+    )
+    .merge_config(MergeConfig::new(
+        BubbleMergeConfig::builder()
+            .min_neighbors(4)
+            .base_interval(Duration::from_secs(60))
+            .max_jitter(Duration::from_secs(120))
+            .fail_topic_creation_on_merge_startup_failure(true)
+            .build(),
+        MessageOverlapMergeConfig::builder()
+            .base_interval(Duration::from_secs(60))
+            .max_jitter(Duration::from_secs(120))
+            .fail_topic_creation_on_merge_startup_failure(true)
+            .build(),
+    ))
+    .timeouts(
+        TimeoutConfig::builder()
+            .join_peer_timeout(Duration::from_secs(5))
+            .broadcast_neighbors_timeout(Duration::from_secs(5))
+            .broadcast_timeout(Duration::from_secs(5))
+            .build(),
+    )
+    .build();
 ```
 
 **Disable merge strategies or publishing**
