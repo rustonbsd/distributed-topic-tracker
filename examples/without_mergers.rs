@@ -4,7 +4,10 @@ use iroh::{Endpoint, SecretKey};
 use iroh_gossip::net::Gossip;
 
 // Imports from distributed-topic-tracker
-use distributed_topic_tracker::{AutoDiscoveryGossip, BubbleMergeConfig, Config, MergeConfig, MessageOverlapMergeConfig, RecordPublisher, TopicId};
+use distributed_topic_tracker::{
+    AutoDiscoveryGossip, BubbleMergeConfig, Config, MergeConfig, MessageOverlapMergeConfig,
+    RecordPublisher, TopicId,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -34,11 +37,17 @@ async fn main() -> Result<()> {
         signing_key.clone(),
         None,
         initial_secret,
-
         // [!] Disable merge workers (BubbleMerge and MessageOverlapMerge)
-        Config::builder().merge_config(MergeConfig::new(BubbleMergeConfig::Disabled, MessageOverlapMergeConfig::Disabled)).build(),
+        Config::builder()
+            .merge_config(
+                MergeConfig::builder()
+                    .bubble_merge(BubbleMergeConfig::Disabled)
+                    .message_overlap_merge(MessageOverlapMergeConfig::Disabled)
+                    .build(),
+            )
+            .build(),
     );
-    
+
     let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?;

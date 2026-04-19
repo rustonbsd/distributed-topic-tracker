@@ -91,7 +91,6 @@ async fn main() -> Result<()> {
         gossip_sender
             .broadcast(
                 buffer
-                    .clone()
                     .trim_end_matches(&['\r', '\n'][..])
                     .as_bytes()
                     .to_vec(),

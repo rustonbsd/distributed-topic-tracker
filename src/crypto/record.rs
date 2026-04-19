@@ -269,7 +269,7 @@ impl RecordPublisher {
             .put_mutable(
                 sign_key.clone(),
                 Some(salt.to_vec()),
-                encrypted_record.to_bytes().to_vec(),
+                encrypted_record.to_bytes()?,
                 next_seq_num,
             )
             .await?;
@@ -353,7 +353,7 @@ impl EncryptedRecord {
     }
 
     /// Serialize to bytes (length-prefixed format).
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut buf = Vec::new();
         let encrypted_record_len = self.encrypted_record.len() as u32;
         buf.extend_from_slice(&encrypted_record_len.to_le_bytes());
@@ -361,9 +361,9 @@ impl EncryptedRecord {
         buf.extend_from_slice(&self.encrypted_decryption_key);
 
         if buf.len() > Self::MAX_SIZE {
-            unreachable!("EncryptedRecord serialization exceeds maximum size, the max is set generously so this should never happen, if so your code is using it manually");
+            bail!("EncryptedRecord serialization exceeds maximum size, the max is set generously so this should never happen, if so your code is using it manually");
         }
-        buf
+        Ok(buf)
     }
 
     /// Deserialize from bytes.
@@ -501,7 +501,7 @@ impl Record {
         self.unix_minute
     }
 
-    /// Get the node ID (publisher's public key).
+    /// Get the pub_key (publisher's public key).
     pub fn pub_key(&self) -> [u8; 32] {
         self.pub_key
     }

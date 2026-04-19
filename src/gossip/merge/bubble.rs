@@ -86,14 +86,14 @@ impl BubbleMergeActor {
                     if let Err(e) = self.merge().await {
                         tracing::warn!("BubbleMerge: error during merge: {:?}", e);
                     }
-                    let jitter_ms = if self.max_jitter.as_millis() > 0 {
-                        rand::random::<u128>() % self.max_jitter.as_millis()
+                    let jitter = if self.max_jitter > Duration::ZERO {
+                        Duration::from_micros(rand::random::<u64>() % self.max_jitter.as_micros() as u64)
                     } else {
-                        0
+                        Duration::ZERO
                     };
-                    let next_interval = self.base_interval.as_millis() + jitter_ms;
-                    tracing::debug!("BubbleMerge: next check in {}ms", next_interval);
-                    self.ticker.reset_after(Duration::from_millis(next_interval as u64));
+                    let next_interval = self.base_interval + jitter;
+                    tracing::debug!("BubbleMerge: next check in {}ms", next_interval.as_millis());
+                    self.ticker.reset_after(next_interval);
                 }
                 _ = self.cancel_token.cancelled() => {
                     break Ok(());
@@ -124,6 +124,7 @@ impl BubbleMergeActor {
                 neighbors.len(),
                 self.min_neighbors
             );
+            let self_pub_key = EndpointId::from_verifying_key(self.record_publisher.pub_key());
             let pub_keys = records
                 .iter()
                 .flat_map(|record| {
@@ -136,7 +137,7 @@ impl BubbleMergeActor {
                                 if active_peer == [0; 32]
                                     || neighbors.contains(&active_peer)
                                     || active_peer == record.pub_key()
-                                    || active_peer.eq(self.record_publisher.pub_key().as_bytes())
+                                    || active_peer.eq(self_pub_key.as_bytes())
                                 {
                                     None
                                 } else {
@@ -148,8 +149,7 @@ impl BubbleMergeActor {
                         vec![]
                     };
                     if let Ok(pub_key) = EndpointId::from_bytes(&record.pub_key())
-                        && pub_key
-                            != EndpointId::from_verifying_key(self.record_publisher.pub_key())
+                        && !pub_key.eq(&self_pub_key)
                         && !neighbors.contains(&pub_key)
                     {
                         pub_keys.push(pub_key);

@@ -36,7 +36,7 @@ fn config_builder() -> Config {
                 .join_confirmation_wait_time(Duration::from_millis(500))
                 .build(),
         )
-        .max_join_peer_count(4)
+        .max_join_peer_count(std::num::NonZeroU32::new(4).expect("must be > 0"))
         .publisher_config(
             PublisherConfig::builder()
                 .initial_delay(Duration::from_secs(10))
@@ -44,19 +44,25 @@ fn config_builder() -> Config {
                 .max_jitter(Duration::from_secs(50))
                 .build(),
         )
-        .merge_config(MergeConfig::new(
-            BubbleMergeConfig::builder()
-                .min_neighbors(4)
-                .base_interval(Duration::from_secs(60))
-                .max_jitter(Duration::from_secs(120))
-                .fail_topic_creation_on_merge_startup_failure(true)
+        .merge_config(
+            MergeConfig::builder()
+                .bubble_merge(
+                    BubbleMergeConfig::builder()
+                        .min_neighbors(4)
+                        .base_interval(Duration::from_secs(60))
+                        .max_jitter(Duration::from_secs(120))
+                        .fail_topic_creation_on_merge_startup_failure(true)
+                        .build(),
+                )
+                .message_overlap_merge(
+                    MessageOverlapMergeConfig::builder()
+                        .base_interval(Duration::from_secs(60))
+                        .max_jitter(Duration::from_secs(120))
+                        .fail_topic_creation_on_merge_startup_failure(true)
+                        .build(),
+                )
                 .build(),
-            MessageOverlapMergeConfig::builder()
-                .base_interval(Duration::from_secs(60))
-                .max_jitter(Duration::from_secs(120))
-                .fail_topic_creation_on_merge_startup_failure(true)
-                .build(),
-        ))
+        )
         .timeouts(
             TimeoutConfig::builder()
                 .join_peer_timeout(Duration::from_secs(5))

@@ -217,7 +217,9 @@ impl BootstrapActor {
                             let mut v = vec![record.pub_key()];
                             if let Ok(record_content) = record.content::<GossipRecordContent>() {
                                 for peer in record_content.active_peers {
-                                    if peer != [0; 32] {
+                                    if peer != [0; 32]
+                                        && !peer.eq(record_publisher.pub_key().as_bytes())
+                                    {
                                         v.push(peer);
                                     }
                                 }

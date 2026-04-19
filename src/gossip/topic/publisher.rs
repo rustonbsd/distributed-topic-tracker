@@ -75,14 +75,14 @@ impl PublisherActor {
                     if let Err(e) = self.publish().await {
                         tracing::warn!("Publisher: failed to publish record: {:?}", e);
                     }
-                    let jitter_ms = if self.max_jitter.as_millis() > 0 {
-                        rand::random::<u128>() % self.max_jitter.as_millis()
+                    let jitter = if self.max_jitter > Duration::ZERO {
+                        Duration::from_micros(rand::random::<u64>() % self.max_jitter.as_micros() as u64)
                     } else {
-                        0
+                        Duration::ZERO
                     };
-                    let next_interval = self.base_interval.as_millis() + jitter_ms;
-                    tracing::debug!("Publisher: next publish in {}ms", next_interval);
-                    self.ticker.reset_after(Duration::from_millis(next_interval as u64));
+                    let next_interval = self.base_interval + jitter;
+                    tracing::debug!("Publisher: next publish in {}ms", next_interval.as_millis());
+                    self.ticker.reset_after(next_interval);
                 }
                 _ = self.cancel_token.cancelled() => {
                     break Ok(());

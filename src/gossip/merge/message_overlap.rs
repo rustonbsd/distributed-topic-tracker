@@ -77,14 +77,14 @@ impl MessageOverlapMergeActor {
                     if let Err(e) = self.merge().await {
                         tracing::warn!("MessageOverlapMerge: error during merge: {:?}", e);
                     }
-                    let jitter_ms = if self.max_jitter.as_millis() > 0 {
-                        rand::random::<u128>() % self.max_jitter.as_millis()
+                    let jitter = if self.max_jitter > Duration::ZERO {
+                        Duration::from_micros(rand::random::<u64>() % self.max_jitter.as_micros() as u64)
                     } else {
-                        0
+                        Duration::ZERO
                     };
-                    let next_interval = self.base_interval.as_millis() + jitter_ms;
-                    tracing::debug!("MessageOverlapMerge: next check in {}ms", next_interval);
-                    self.ticker.reset_after(Duration::from_millis(next_interval as u64));
+                    let next_interval = self.base_interval + jitter;
+                    tracing::debug!("MessageOverlapMerge: next check in {}ms", next_interval.as_millis());
+                    self.ticker.reset_after(next_interval);
                 }
                 _ = self.cancel_token.cancelled() => {
                     break Ok(());
@@ -121,7 +121,6 @@ impl MessageOverlapMergeActor {
                             .collect::<Vec<_>>();
 
                         !remote_hashes.is_empty()
-                            && !last_message_hashes.is_empty()
                             && remote_hashes.iter().all(|last_message_hash| {
                                 !last_message_hashes.contains(*last_message_hash)
                             })
@@ -138,13 +137,13 @@ impl MessageOverlapMergeActor {
 
             if !peers_to_join.is_empty() {
                 let active_neighbors = self.gossip_receiver.neighbors().await?;
+                let self_pub_key = EndpointId::from_verifying_key(self.record_publisher.pub_key());
                 let pub_keys = peers_to_join
                     .iter()
                     .flat_map(|&record| {
                         let mut peers = vec![];
                         if let Ok(pub_key) = EndpointId::from_bytes(&record.pub_key())
-                            && pub_key
-                                != EndpointId::from_verifying_key(self.record_publisher.pub_key())
+                            && pub_key != self_pub_key
                         {
                             peers.push(pub_key);
                         }
@@ -154,10 +153,7 @@ impl MessageOverlapMergeActor {
                                     continue;
                                 }
                                 if let Ok(pub_key) = EndpointId::from_bytes(&active_peer)
-                                    && pub_key
-                                        != EndpointId::from_verifying_key(
-                                            self.record_publisher.pub_key(),
-                                        )
+                                    && pub_key != self_pub_key
                                 {
                                     peers.push(pub_key);
                                 }
