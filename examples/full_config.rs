@@ -36,7 +36,7 @@ fn config_builder() -> Config {
                 .join_confirmation_wait_time(Duration::from_millis(500))
                 .build(),
         )
-        .max_join_peer_count(std::num::NonZeroU32::new(4).expect("must be > 0"))
+        .max_join_peer_count(4)
         .publisher_config(
             PublisherConfig::builder()
                 .initial_delay(Duration::from_secs(10))
