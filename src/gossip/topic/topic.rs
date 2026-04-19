@@ -1,9 +1,6 @@
 //! Main topic handle combining bootstrap, publishing, and merging.
 
-use std::{
-    str::FromStr,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
 use crate::{
     BubbleMergeConfig, Config, GossipSender, MessageOverlapMergeConfig,
@@ -15,73 +12,7 @@ use crate::{
 };
 use actor_helper::{Handle, act, act_ok};
 use anyhow::Result;
-use sha2::Digest;
 use tokio_util::sync::CancellationToken;
-
-/// Topic identifier derived from a string via SHA512 hashing.
-///
-/// Used as the stable identifier for gossip subscriptions and DHT records.
-///
-/// # Example
-///
-/// ```ignore
-/// let topic_id = TopicId::new("chat-room-1".to_string());
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TopicId([u8; 32]);
-
-impl FromStr for TopicId {
-    type Err = anyhow::Error;
-
-    fn from_str(topic_name: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Self::new(topic_name.to_string()))
-    }
-}
-
-impl From<&str> for TopicId {
-    fn from(topic_name: &str) -> Self {
-        Self::new(topic_name.to_string())
-    }
-}
-
-impl From<String> for TopicId {
-    fn from(topic_name: String) -> Self {
-        Self::new(topic_name)
-    }
-}
-/// Treats `bytes` as a topic *name* and SHA-512 hashes them.
-/// For a pre-computed 32-byte hash, use [`TopicId::from_hash`] instead.
-impl From<Vec<u8>> for TopicId {
-    fn from(topic_name: Vec<u8>) -> Self {
-        Self::new(topic_name)
-    }
-}
-
-impl TopicId {
-    /// Create a new topic ID from a string.
-    ///
-    /// String is hashed with SHA512; the first 32 bytes produce the identifier.
-    pub fn new(topic_name: impl Into<Vec<u8>>) -> Self {
-        let mut topic_name_hash = sha2::Sha512::new();
-        topic_name_hash.update(topic_name.into());
-
-        Self(
-            topic_name_hash.finalize()[..32]
-                .try_into()
-                .expect("hashing 'topic_name' failed"),
-        )
-    }
-
-    /// Create from a pre-computed 32-byte hash.
-    pub fn from_hash(bytes: &[u8; 32]) -> Self {
-        Self(*bytes)
-    }
-
-    /// Get the hash bytes.
-    pub fn hash(&self) -> [u8; 32] {
-        self.0
-    }
-}
 
 /// Handle to a joined gossip topic with auto-discovery.
 ///
@@ -308,7 +239,6 @@ async fn spawn_workers(
         Ok(())
     } else {
         tracing::warn!("Topic: cancelled before workers could be spawned");
-        cancel_token.cancel();
         Err(anyhow::anyhow!("cancelled before workers could be spawned"))
     }
 }
@@ -467,7 +397,7 @@ mod tests {
 
         cancel_token.cancel();
 
-        // next() on a receiver that was alive before shutdown must return None,
+        // next() on a receiver that was alive before shutdown must return ChannelError,
         // not hang. If the broadcast channel didn't close, this would block forever
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), survivor.next())
             .await

@@ -76,7 +76,7 @@ impl PublisherActor {
                         tracing::warn!("Publisher: failed to publish record: {:?}", e);
                     }
                     let jitter = if self.max_jitter > Duration::ZERO {
-                        Duration::from_micros(rand::random::<u64>() % self.max_jitter.as_micros() as u64)
+                        Duration::from_nanos(rand::random::<u64>() % self.max_jitter.as_nanos() as u64)
                     } else {
                         Duration::ZERO
                     };

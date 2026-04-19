@@ -13,7 +13,7 @@ pub use merge::{BubbleMerge, MessageOverlapMerge};
 pub use receiver::GossipReceiver;
 pub use sender::GossipSender;
 use serde::{Deserialize, Serialize};
-pub use topic::{Bootstrap, Publisher, Topic, TopicId};
+pub use topic::{Bootstrap, Publisher, Topic};
 
 use crate::{MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher};
 

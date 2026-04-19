@@ -102,12 +102,11 @@ impl BootstrapActor {
             if self.config.publish_record_on_startup() {
                 let unix_minute = crate::unix_minute(0);
                 tracing::debug!("Bootstrap: initial startup record publish {}", unix_minute);
-                last_published_unix_minute =
-                    if self.config.check_last_minute_record_first_on_startup() {
-                        0
-                    } else {
-                        unix_minute
-                    };
+                last_published_unix_minute = if self.config.check_older_records_first_on_startup() {
+                    0
+                } else {
+                    unix_minute
+                };
                 let record_creator = record_publisher.clone();
                 let record_content = GossipRecordContent {
                     active_peers: [[0; 32]; MAX_RECORD_PEERS],
@@ -139,26 +138,26 @@ impl BootstrapActor {
                         break;
                     }
 
-                    // On the first try we check the prev unix minute, after that the current one
+                    let current_unix_minute = crate::unix_minute(0);
+
                     let mut use_cached_next = true;
-                    let unix_minute = crate::unix_minute(
-                        if last_published_unix_minute == 0
-                            && bootstrap_config.check_last_minute_record_first_on_startup()
-                        {
-                            use_cached_next = false;
-                            -1
-                        } else {
-                            0
-                        },
-                    );
+                    // last_published_unix_minute == 0 means first run
+                    let unix_minute_offset = if last_published_unix_minute == 0
+                        && bootstrap_config.check_older_records_first_on_startup()
+                    {
+                        use_cached_next = false;
+                        1
+                    } else {
+                        0
+                    };
 
                     // Unique, verified records for the unix minute
                     let mut records = record_publisher
-                        .get_records(unix_minute - 1)
+                        .get_records(current_unix_minute.saturating_sub(unix_minute_offset+1))
                         .await
                         .unwrap_or_default();
                     let current_records = record_publisher
-                        .get_records(unix_minute)
+                        .get_records(current_unix_minute.saturating_sub(unix_minute_offset))
                         .await
                         .unwrap_or_default();
                     records.extend(current_records.clone());
@@ -166,18 +165,18 @@ impl BootstrapActor {
                     tracing::debug!(
                         "Bootstrap: fetched {} records for unix_minute {}",
                         records.len(),
-                        unix_minute
+                        current_unix_minute
                     );
 
                     // If there are no records, invoke the publish_proc (the publishing procedure)
                     // continue the loop after
                     if records.is_empty() {
-                        if unix_minute != last_published_unix_minute {
+                        if current_unix_minute != last_published_unix_minute {
                             tracing::debug!(
                                 "Bootstrap: no records found, publishing own record for unix_minute {}",
-                                unix_minute
+                                current_unix_minute
                             );
-                            last_published_unix_minute = unix_minute;
+                            last_published_unix_minute = current_unix_minute;
                             let record_creator = record_publisher.clone();
                             let record_content = GossipRecordContent {
                                 active_peers: [[0; 32]; MAX_RECORD_PEERS],
@@ -185,7 +184,7 @@ impl BootstrapActor {
                             };
                             if let Ok(record) = Record::sign(
                                 record_publisher.topic_id().hash(),
-                                unix_minute,
+                                current_unix_minute,
                                 record_content,
                                 record_publisher.signing_key(),
                             ) {
@@ -214,7 +213,9 @@ impl BootstrapActor {
                     let bootstrap_nodes = records
                         .iter()
                         .flat_map(|record| {
+                            // records are already filtered by self entry
                             let mut v = vec![record.pub_key()];
+
                             if let Ok(record_content) = record.content::<GossipRecordContent>() {
                                 for peer in record_content.active_peers {
                                     if peer != [0; 32]
@@ -324,16 +325,16 @@ impl BootstrapActor {
                     } else {
                         tracing::debug!("Bootstrap: still not joined after attempting all peers");
                         // If we are not connected: check if we should publish a record this minute
-                        if unix_minute != last_published_unix_minute {
+                        if current_unix_minute != last_published_unix_minute {
                             tracing::debug!(
                                 "Bootstrap: publishing fallback record for unix_minute {}",
-                                unix_minute
+                                current_unix_minute
                             );
-                            last_published_unix_minute = unix_minute;
+                            last_published_unix_minute = current_unix_minute;
                             let record_creator = record_publisher.clone();
                             if let Ok(record) = Record::sign(
                                 record_publisher.topic_id().hash(),
-                                unix_minute,
+                                current_unix_minute,
                                 GossipRecordContent {
                                     active_peers: [[0; 32]; MAX_RECORD_PEERS],
                                     last_message_hashes: [[0; 32]; MAX_MESSAGE_HASHES],

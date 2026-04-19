@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use anyhow::{Result, bail};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
@@ -7,7 +10,72 @@ use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
-use crate::{Config, TopicId};
+use crate::Config;
+
+/// Topic identifier derived from a string via SHA512 hashing.
+///
+/// Used as the stable identifier for gossip subscriptions and DHT records.
+///
+/// # Example
+///
+/// ```ignore
+/// let topic_id = TopicId::new("chat-room-1".to_string());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TopicId([u8; 32]);
+
+impl FromStr for TopicId {
+    type Err = anyhow::Error;
+
+    fn from_str(topic_name: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self::new(topic_name.to_string()))
+    }
+}
+
+impl From<&str> for TopicId {
+    fn from(topic_name: &str) -> Self {
+        Self::new(topic_name.to_string())
+    }
+}
+
+impl From<String> for TopicId {
+    fn from(topic_name: String) -> Self {
+        Self::new(topic_name)
+    }
+}
+/// Treats `bytes` as a topic *name* and SHA-512 hashes them.
+/// For a pre-computed 32-byte hash, use [`TopicId::from_hash`] instead.
+impl From<Vec<u8>> for TopicId {
+    fn from(topic_name: Vec<u8>) -> Self {
+        Self::new(topic_name)
+    }
+}
+
+impl TopicId {
+    /// Create a new topic ID from a string.
+    ///
+    /// String is hashed with SHA512; the first 32 bytes produce the identifier.
+    pub fn new(topic_name: impl Into<Vec<u8>>) -> Self {
+        let mut topic_name_hash = sha2::Sha512::new();
+        topic_name_hash.update(topic_name.into());
+
+        Self(
+            topic_name_hash.finalize()[..32]
+                .try_into()
+                .expect("hashing 'topic_name' failed"),
+        )
+    }
+
+    /// Create from a pre-computed 32-byte hash.
+    pub fn from_hash(bytes: &[u8; 32]) -> Self {
+        Self(*bytes)
+    }
+
+    /// Get the hash bytes.
+    pub fn hash(&self) -> [u8; 32] {
+        self.0
+    }
+}
 
 /// DHT record encrypted with HPKE.
 ///
@@ -224,14 +292,9 @@ impl RecordPublisher {
         record: Record,
         cached_records: Option<HashSet<Record>>,
     ) -> Result<()> {
-        let records = if let Some(records) = cached_records {
-            records
-        } else {
-            self.get_records(record.unix_minute())
-                .await?
-                .iter()
-                .cloned()
-                .collect::<HashSet<_>>()
+        let records = match cached_records {
+            Some(records) => records,
+            None => self.get_records(record.unix_minute()).await?,
         };
 
         tracing::debug!(
@@ -361,7 +424,9 @@ impl EncryptedRecord {
         buf.extend_from_slice(&self.encrypted_decryption_key);
 
         if buf.len() > Self::MAX_SIZE {
-            bail!("EncryptedRecord serialization exceeds maximum size, the max is set generously so this should never happen, if so your code is using it manually");
+            bail!(
+                "EncryptedRecord serialization exceeds maximum size, the max is set generously so this should never happen, if so your code is using it manually"
+            );
         }
         Ok(buf)
     }

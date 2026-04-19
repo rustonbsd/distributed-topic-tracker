@@ -108,9 +108,9 @@ The bootstrap procedure is a continuous loop that attempts to discover and conne
    - If connected, exit bootstrap loop
 
 3. **Time Window Selection**
-   - If `check_last_minute_record_first_on_startup` is enabled and this is the first attempt: check previous `unix minute-1` and `unix_minute-2`
+   - If `check_older_records_first_on_startup` is enabled and this is the first attempt: check previous `unix minute-1` and `unix_minute-2`
    - Otherwise: check current unix minute `unix_minute` and `unix_minute-1`
-   - Both `unix_minute` and `unix_minute-1` records are always fetched
+   - Two records are always fetched
 
 4. **Record Discovery**
    - Call `get_records()` for both `unix_minute - 1` and `unix_minute`:
@@ -147,7 +147,7 @@ The bootstrap procedure is a continuous loop that attempts to discover and conne
    - Wait `discovery_poll_interval` (default 2000ms) and continue loop
 
 ### Error Handling
-- DHT timeouts return empty record sets (non-fatal)
+- DHT timeouts return error after retries are exhausted
 - Failed record decryption/verification are treated as invalid records and ignored
 - Failed peer connections don't interrupt the process
 - Publishing failures don't prevent continued bootstrapping
@@ -165,7 +165,7 @@ flowchart TD
   D -- Yes --> Z[Return Success]
   D -- No --> E[Determine Unix Minute]
 
-  E --> F{First attempt AND check_last_minute_record_first?}
+  E --> F{First attempt AND check_older_records_first?}
   F -- Yes --> G[Use Previous Minute unix_minute = -1]
   F -- No  --> H[Use Current Minute unix_minute = 0]
 
@@ -399,7 +399,7 @@ A one-time key encryption scheme is used to protect record content while allowin
 ```
 [4 bytes: encrypted_record_length (little-endian u32)]
 [variable: encrypted_record data]
-[variable: encrypted_decryption_key data (88 bytes)]
+[88 bytes: encrypted_decryption_key]
 ```
 
 ### Security Properties
