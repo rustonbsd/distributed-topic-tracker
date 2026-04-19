@@ -142,7 +142,7 @@ impl PublisherActor {
             .new_record(unix_minute, record_content);
         tracing::debug!("Publisher: created new record: {:?}", res);
         let record = res?;
-        let result = self.record_publisher.publish_record(record).await;
+        let result = self.record_publisher.publish_record(record, self.cancel_token.clone()).await;
 
         if let Err(ref e) = result {
             tracing::debug!("Publisher: failed to publish record: {:?}", e);

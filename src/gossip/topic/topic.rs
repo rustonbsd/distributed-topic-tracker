@@ -177,7 +177,7 @@ async fn spawn_workers(
     cancel_token: CancellationToken,
 ) -> Result<()> {
     if !cancel_token.is_cancelled() {
-        if matches!(config.publisher_config(), PublisherConfig::Enabled { .. }) {
+        if matches!(config.publisher_config(), PublisherConfig::Enabled(_)) {
             tracing::debug!("Topic: starting publisher");
             match api.upgrade() {
                 Some(api) => {
@@ -195,7 +195,7 @@ async fn spawn_workers(
 
         if matches!(
             config.merge_config().bubble_merge(),
-            BubbleMergeConfig::Enabled { .. }
+            BubbleMergeConfig::Enabled(_)
         ) {
             tracing::debug!("Topic: starting bubble merge");
             match api.upgrade() {
@@ -214,7 +214,7 @@ async fn spawn_workers(
 
         if matches!(
             config.merge_config().message_overlap_merge(),
-            MessageOverlapMergeConfig::Enabled { .. }
+            MessageOverlapMergeConfig::Enabled(_)
         ) {
             tracing::debug!("Topic: starting message overlap merge");
             match api.upgrade() {

@@ -9,6 +9,7 @@ use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
+use tokio_util::sync::CancellationToken;
 
 use crate::Config;
 
@@ -279,8 +280,8 @@ impl RecordPublisher {
     ///
     /// Checks existing record count for this time slot and skips publishing if
     /// `self.config.bootstrap_config().max_bootstrap_records()` limit reached.
-    pub async fn publish_record(&self, record: Record) -> Result<()> {
-        self.publish_record_cached_records(record, None).await
+    pub async fn publish_record(&self, record: Record, cancel_token: CancellationToken) -> Result<()> {
+        self.publish_record_cached_records(record, None, cancel_token).await
     }
 
     /// Publish a record to the DHT (using cached get_records) if slot capacity allows.
@@ -291,111 +292,134 @@ impl RecordPublisher {
         &self,
         record: Record,
         cached_records: Option<HashSet<Record>>,
+        cancel_token: CancellationToken,
     ) -> Result<()> {
-        let records = match cached_records {
-            Some(records) => records,
-            None => self.get_records(record.unix_minute()).await?,
+        let publish_fut = async {
+            let records = match cached_records {
+                Some(records) => records,
+                None => self.get_records(record.unix_minute(), cancel_token.clone()).await?,
+            };
+
+            tracing::debug!(
+                "RecordPublisher: found {} existing records for unix_minute {}",
+                records.len(),
+                record.unix_minute()
+            );
+
+            if records.len() >= self.config.bootstrap_config().max_bootstrap_records() {
+                tracing::debug!(
+                    "RecordPublisher: max records reached ({}), skipping publish",
+                    self.config.bootstrap_config().max_bootstrap_records()
+                );
+                return Ok(());
+            }
+
+            // Publish own records
+            let sign_key = crate::crypto::keys::signing_keypair(self.topic_id(), record.unix_minute);
+            let salt = crate::crypto::keys::salt(self.topic_id(), record.unix_minute);
+            let encryption_key = crate::crypto::keys::encryption_keypair(
+                self.topic_id(),
+                &self.secret_rotation.clone().unwrap_or_default(),
+                self.initial_secret_hash,
+                record.unix_minute,
+            );
+            let encrypted_record = record.encrypt(&encryption_key);
+            let next_seq_num = i64::MAX;
+
+            tracing::debug!(
+                "RecordPublisher: publishing record to DHT for unix_minute {}",
+                record.unix_minute()
+            );
+
+            self.dht
+                .put_mutable(
+                    sign_key.clone(),
+                    Some(salt.to_vec()),
+                    encrypted_record.to_bytes()?,
+                    next_seq_num,
+                )
+                .await?;
+
+            tracing::debug!("RecordPublisher: successfully published to DHT");
+            Ok(())
         };
 
-        tracing::debug!(
-            "RecordPublisher: found {} existing records for unix_minute {}",
-            records.len(),
-            record.unix_minute()
-        );
-
-        if records.len() >= self.config.bootstrap_config().max_bootstrap_records() {
-            tracing::debug!(
-                "RecordPublisher: max records reached ({}), skipping publish",
-                self.config.bootstrap_config().max_bootstrap_records()
-            );
-            return Ok(());
+        tokio::select! {
+            _ = cancel_token.cancelled() => {
+                anyhow::bail!("publish cancelled");
+            }
+            res = publish_fut => {
+                res
+            }
         }
-
-        // Publish own records
-        let sign_key = crate::crypto::keys::signing_keypair(self.topic_id(), record.unix_minute);
-        let salt = crate::crypto::keys::salt(self.topic_id(), record.unix_minute);
-        let encryption_key = crate::crypto::keys::encryption_keypair(
-            self.topic_id(),
-            &self.secret_rotation.clone().unwrap_or_default(),
-            self.initial_secret_hash,
-            record.unix_minute,
-        );
-        let encrypted_record = record.encrypt(&encryption_key);
-        let next_seq_num = i64::MAX;
-
-        tracing::debug!(
-            "RecordPublisher: publishing record to DHT for unix_minute {}",
-            record.unix_minute()
-        );
-
-        self.dht
-            .put_mutable(
-                sign_key.clone(),
-                Some(salt.to_vec()),
-                encrypted_record.to_bytes()?,
-                next_seq_num,
-            )
-            .await?;
-
-        tracing::debug!("RecordPublisher: successfully published to DHT");
-        Ok(())
     }
 
     /// Retrieve all verified records for a given time slot from the DHT.
     ///
     /// Filters out records from this publisher's own node ID.
     /// Dedup's records based on pub_key, keeping the highest sequence number per pub_key.
-    pub async fn get_records(&self, unix_minute: u64) -> Result<HashSet<Record>> {
-        tracing::debug!(
-            "RecordPublisher: fetching records from DHT for unix_minute {}",
-            unix_minute
-        );
+    pub async fn get_records(&self, unix_minute: u64, cancel_token: CancellationToken) -> Result<HashSet<Record>> {
+        let get_fut = async {
+            tracing::debug!(
+                "RecordPublisher: fetching records from DHT for unix_minute {}",
+                unix_minute
+            );
 
-        let topic_sign = crate::crypto::keys::signing_keypair(self.topic_id(), unix_minute);
-        let encryption_key = crate::crypto::keys::encryption_keypair(
-            self.topic_id(),
-            &self.secret_rotation.clone().unwrap_or_default(),
-            self.initial_secret_hash,
-            unix_minute,
-        );
-        let salt = crate::crypto::keys::salt(self.topic_id(), unix_minute);
+            let topic_sign = crate::crypto::keys::signing_keypair(self.topic_id(), unix_minute);
+            let encryption_key = crate::crypto::keys::encryption_keypair(
+                self.topic_id(),
+                &self.secret_rotation.clone().unwrap_or_default(),
+                self.initial_secret_hash,
+                unix_minute,
+            );
+            let salt = crate::crypto::keys::salt(self.topic_id(), unix_minute);
 
-        // Get records, decrypt and verify
-        let records_iter = self
-            .dht
-            .get(topic_sign.verifying_key(), Some(salt.to_vec()), None)
-            .await?;
+            // Get records, decrypt and verify
+            let records_iter = self
+                .dht
+                .get(topic_sign.verifying_key(), Some(salt.to_vec()), None)
+                .await?;
 
-        tracing::debug!(
-            "RecordPublisher: received {} raw records from DHT",
-            records_iter.len()
-        );
+            tracing::debug!(
+                "RecordPublisher: received {} raw records from DHT",
+                records_iter.len()
+            );
 
-        let mut dedubed_records = HashMap::new();
-        for item in records_iter {
-            if let Ok(encrypted_record) = EncryptedRecord::from_bytes(item.value().to_vec())
-                && let Ok(record) = encrypted_record.decrypt(&encryption_key)
-                && record.verify(&self.topic_id.hash(), unix_minute).is_ok()
-                && !record.pub_key().eq(self.pub_key.as_bytes())
-            {
-                let pub_key = record.pub_key();
-                match dedubed_records.get(&pub_key) {
-                    Some((seq, _)) if *seq >= item.seq() => {}
-                    _ => {
-                        dedubed_records.insert(pub_key, (item.seq(), record));
+            let mut dedubed_records = HashMap::new();
+            for item in records_iter {
+                if let Ok(encrypted_record) = EncryptedRecord::from_bytes(item.value().to_vec())
+                    && let Ok(record) = encrypted_record.decrypt(&encryption_key)
+                    && record.verify(&self.topic_id.hash(), unix_minute).is_ok()
+                    && !record.pub_key().eq(self.pub_key.as_bytes())
+                {
+                    let pub_key = record.pub_key();
+                    match dedubed_records.get(&pub_key) {
+                        Some((seq, _)) if *seq >= item.seq() => {}
+                        _ => {
+                            dedubed_records.insert(pub_key, (item.seq(), record));
+                        }
                     }
                 }
             }
-        }
-        tracing::debug!(
-            "RecordPublisher: verified {} records (filtered self)",
-            dedubed_records.len()
-        );
+            tracing::debug!(
+                "RecordPublisher: verified {} records (filtered self)",
+                dedubed_records.len()
+            );
 
-        Ok(dedubed_records
-            .into_values()
-            .map(|(_, record)| record)
-            .collect::<HashSet<_>>())
+            Ok(dedubed_records
+                .into_values()
+                .map(|(_, record)| record)
+                .collect::<HashSet<_>>())
+        };
+
+        tokio::select! {
+            _ = cancel_token.cancelled() => {
+                anyhow::bail!("get_records cancelled");
+            }
+            res = get_fut => {
+                res
+            }
+        }
     }
 }
 
