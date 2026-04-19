@@ -133,19 +133,29 @@ impl DhtConfigBuilder {
         self
     }
 
-    /// Timeout for DHT put operations.
+    /// Timeout for DHT put operations. No-op if `timeout` is `Duration::ZERO`.
+    /// 
+    /// If `put_timeout` is called only once with `Duration::ZERO`, default value prevails.
+    /// If `put_timeout` is first called with a > `Duration::ZERO`, and then again with `Duration::ZERO`, the first set value is kept.
     ///
     /// Default: 10s.
     pub fn put_timeout(mut self, timeout: Duration) -> Self {
-        self.config.put_timeout = timeout;
+        if timeout > Duration::ZERO {
+            self.config.put_timeout = timeout;
+        }
         self
     }
 
-    /// Timeout for DHT get operations.
+    /// Timeout for DHT get operations. No-op if `timeout` is `Duration::ZERO`.
+    /// 
+    /// If `get_timeout` is called only once with `Duration::ZERO`, default value prevails.
+    /// If `get_timeout` is first called with a > `Duration::ZERO`, and then again with `Duration::ZERO`, the first set value is kept.
     ///
     /// Default: 10s.
     pub fn get_timeout(mut self, timeout: Duration) -> Self {
-        self.config.get_timeout = timeout;
+        if timeout > Duration::ZERO {
+            self.config.get_timeout = timeout;
+        }
         self
     }
 

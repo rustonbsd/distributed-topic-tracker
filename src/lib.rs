@@ -13,9 +13,10 @@ pub use gossip::{
 };
 
 pub use config::{
-    BootstrapConfig, BubbleMergeConfig, BubbleMergeConfigBuilder, Config, ConfigBuilder, DhtConfig,
-    MergeConfig, MessageOverlapMergeConfig, MessageOverlapMergeConfigBuilder, PublisherConfig,
-    PublisherConfigBuilder, TimeoutConfig, TimeoutConfigBuilder,
+    BootstrapConfig, BootstrapConfigBuilder, BubbleMergeConfig, BubbleMergeConfigBuilder, Config,
+    ConfigBuilder, DhtConfig, DhtConfigBuilder, MergeConfig, MergeConfigBuilder,
+    MessageOverlapMergeConfig, MessageOverlapMergeConfigBuilder, PublisherConfig,
+    PublisherConfigBuilder, TimeoutConfig, TimeoutConfigBuilder, 
 };
 pub use crypto::{
     DefaultSecretRotation, EncryptedRecord, Record, RecordPublisher, RotationHandle,
@@ -23,6 +24,7 @@ pub use crypto::{
 };
 pub use dht::Dht;
 
+/// These are part of the on-wire format: DO NOT CHANGE without increasing protocol version.
 pub const MAX_RECORD_PEERS: usize = 5;
 pub const MAX_MESSAGE_HASHES: usize = 5;
 

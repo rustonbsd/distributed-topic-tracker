@@ -10,7 +10,6 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    
     tracing_subscriber::fmt()
         .with_thread_ids(true)
         .with_ansi(true)
@@ -79,7 +78,12 @@ async fn main() -> Result<()> {
         print!("\n> ");
         stdin.read_line(&mut buffer).unwrap();
         gossip_sender
-            .broadcast(buffer.clone().replace("\n", "").into())
+            .broadcast(
+                buffer
+                    .trim_end_matches(&['\r', '\n'][..])
+                    .as_bytes()
+                    .to_vec(),
+            )
             .await
             .unwrap();
         println!(" - (sent)");
