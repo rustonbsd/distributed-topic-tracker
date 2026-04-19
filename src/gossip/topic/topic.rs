@@ -290,7 +290,7 @@ impl TopicActor {
                     self.bootstrap.gossip_sender().await?,
                     self.bootstrap.gossip_receiver().await?,
                     self.cancel_token.clone(),
-                    self.record_publisher.config().max_join_peer_count().max(1),
+                    self.record_publisher.config().max_join_peer_count(),
                     config.base_interval(),
                     config.max_jitter(),
                     config.min_neighbors(),
@@ -331,7 +331,7 @@ impl TopicActor {
                     self.bootstrap.gossip_sender().await?,
                     self.bootstrap.gossip_receiver().await?,
                     self.cancel_token.clone(),
-                    self.record_publisher.config().max_join_peer_count().max(1),
+                    self.record_publisher.config().max_join_peer_count(),
                     config.base_interval(),
                     config.max_jitter(),
                 )

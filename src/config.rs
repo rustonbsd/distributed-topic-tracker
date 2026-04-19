@@ -1,4 +1,4 @@
-use std::{num::NonZeroU32, time::Duration};
+use std::time::Duration;
 
 /// Timeout settings for gossip operations.
 #[derive(Debug, Clone)]
@@ -271,6 +271,8 @@ impl BubbleMergeConfig {
 
 impl BubbleMergeConfigInner {
     /// Base interval for bubble merge attempts.
+    /// 
+    /// `base_interval` > Duration::ZERO
     ///
     /// Default: 60s.
     pub fn base_interval(&self) -> Duration {
@@ -394,6 +396,8 @@ impl MessageOverlapMergeConfig {
 impl MessageOverlapMergeConfigInner {
     /// Base interval for message overlap merge attempts.
     ///
+    /// `base_interval` > Duration::ZERO
+    /// 
     /// Default: 60s.
     pub fn base_interval(&self) -> Duration {
         self.base_interval
@@ -510,6 +514,8 @@ impl PublisherConfigInner {
 
     /// Base interval for publisher attempts.
     ///
+    /// `base_interval` > Duration::ZERO
+    /// 
     /// Default: 10s.
     pub fn base_interval(&self) -> Duration {
         self.base_interval
@@ -854,9 +860,9 @@ impl Config {
         &self.bootstrap_config
     }
 
-    /// Max peers to join simultaneously.
-    ///
-    /// Minimum: 1.
+    /// Max peers to join simultaneously. 
+    /// 
+    /// Minimum is 1.
     ///
     /// Default: 4.
     pub fn max_join_peer_count(&self) -> usize {
@@ -930,13 +936,16 @@ impl ConfigBuilder {
         self
     }
 
-    /// Max peers to join simultaneously.
+    /// Max peers to join simultaneously. No-op if `max_join_peer_count` is zero.
     ///
-    /// Minimum: 1.
+    /// If `max_join_peer_count` is called only once with zero, default value prevails.
+    /// If `max_join_peer_count` is first called with a non-zero value, and then again with zero, the first set value is kept.
     ///
     /// Default: 4.
-    pub fn max_join_peer_count(mut self, max_peers: NonZeroU32) -> Self {
-        self.config.max_join_peer_count = max_peers.get() as usize;
+    pub fn max_join_peer_count(mut self, max_peers: usize) -> Self {
+        if max_peers > 0 {
+            self.config.max_join_peer_count = max_peers;
+        }
         self
     }
 

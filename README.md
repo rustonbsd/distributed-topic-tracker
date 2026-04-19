@@ -154,7 +154,7 @@ let publisher = RecordPublisher::new(topic, signing_key, None, secret, Config::d
 let publisher = RecordPublisher::builder(topic_id, signing_key, initial_secret)
     .config(
         Config::builder()
-            .max_join_peer_count(std::num::NonZeroU32::new(8).expect("must be > 0"))
+            .max_join_peer_count(4)
             .build(),
     )
     .build();
@@ -226,7 +226,7 @@ Config::builder()
             .join_confirmation_wait_time(Duration::from_millis(500))
             .build(),
     )
-    .max_join_peer_count(std::num::NonZeroU32::new(4).expect("must be > 0"))
+    .max_join_peer_count(4)
     .publisher_config(
         PublisherConfig::builder()
             .initial_delay(Duration::from_secs(10))
