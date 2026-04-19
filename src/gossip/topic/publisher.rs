@@ -76,7 +76,7 @@ impl PublisherActor {
                         tracing::warn!("Publisher: failed to publish record: {:?}", e);
                     }
                     let jitter = if self.max_jitter > Duration::ZERO {
-                        Duration::from_nanos(rand::random::<u64>() % self.max_jitter.as_nanos() as u64)
+                        Duration::from_nanos((rand::random::<u128>() % self.max_jitter.as_nanos()) as u64)
                     } else {
                         Duration::ZERO
                     };
@@ -142,7 +142,10 @@ impl PublisherActor {
             .new_record(unix_minute, record_content);
         tracing::debug!("Publisher: created new record: {:?}", res);
         let record = res?;
-        let result = self.record_publisher.publish_record(record, self.cancel_token.clone()).await;
+        let result = self
+            .record_publisher
+            .publish_record(record, self.cancel_token.clone())
+            .await;
 
         if let Err(ref e) = result {
             tracing::debug!("Publisher: failed to publish record: {:?}", e);

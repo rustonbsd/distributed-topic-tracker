@@ -87,7 +87,7 @@ impl BubbleMergeActor {
                         tracing::warn!("BubbleMerge: error during merge: {:?}", e);
                     }
                     let jitter = if self.max_jitter > Duration::ZERO {
-                        Duration::from_nanos(rand::random::<u64>() % self.max_jitter.as_nanos() as u64)
+                        Duration::from_nanos((rand::random::<u128>() % self.max_jitter.as_nanos()) as u64)
                     } else {
                         Duration::ZERO
                     };
@@ -108,8 +108,15 @@ impl BubbleMergeActor {
     // Cluster size as bubble indicator
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let mut records = self.record_publisher.get_records(unix_minute - 1, self.cancel_token.clone()).await?;
-        records.extend(self.record_publisher.get_records(unix_minute, self.cancel_token.clone()).await?);
+        let mut records = self
+            .record_publisher
+            .get_records(unix_minute - 1, self.cancel_token.clone())
+            .await?;
+        records.extend(
+            self.record_publisher
+                .get_records(unix_minute, self.cancel_token.clone())
+                .await?,
+        );
 
         let neighbors = self.gossip_receiver.neighbors().await?;
         tracing::debug!(
@@ -157,7 +164,6 @@ impl BubbleMergeActor {
                     pub_keys
                 })
                 .collect::<HashSet<_>>();
-
 
             if !pub_keys.is_empty() {
                 tracing::debug!(
