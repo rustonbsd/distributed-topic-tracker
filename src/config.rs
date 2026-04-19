@@ -713,7 +713,7 @@ impl BootstrapConfigBuilder {
 
     /// Whether to check `unix_minute` and `unix_minute-1` or `unix_minute-1` and `unix_minute-2` on startup.
     /// 
-    /// If this is enabled than we first fetch `unix_minute-1` and `unix_minute-1`.  
+    /// If this is enabled, we first fetch `unix_minute-1` and `unix_minute-2`.
     ///  
     /// If joining longer running, existing topics is priority, set to true.
     /// If minimizing bootstrap time for cluster cold starts (2+ nodes starting roughly 
