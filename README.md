@@ -114,7 +114,7 @@ The E2E test confirms multiple nodes discover each other via DHT and join the sa
 
 ## Upgrading from 0.2 to 0.3
 
-**0.3** resolves several **stability issues** present in **0.2**. Circular and dangling references between actors caused resource leaks and **tasks could outlive topic and channel handles** (after `Topic`, `GossipSender` and `GossipReceiver` were dropped). Reduced unneccessary DHT writes and reads, adjusted timeouts, **reduced time to bootstrap**. All actor lifecycles are now token-gated, references now work as expected (if all dropped, all background tasks shut down gracefully), and many more improvements. If you find any issues, please report them.
+**0.3** resolves several **stability issues** present in **0.2**. Circular and dangling references between actors caused resource leaks and **tasks could outlive topic and channel handles** (after `Topic`, `GossipSender` and `GossipReceiver` were dropped). Reduced unnecessary DHT writes and reads, adjusted timeouts, **reduced time to bootstrap**. All actor lifecycles are now token-gated, references now work as expected (if all dropped, all background tasks shut down gracefully), and many more improvements. If you find any issues, please report them.
 
 **tldr: background tasks shutdown as expected, faster bootstrap time, better all around**
 
@@ -151,9 +151,12 @@ use distributed_topic_tracker::Config;
 let publisher = RecordPublisher::new(topic, signing_key, None, secret, Config::default());
 
 // or use the new builder:
-let publisher = RecordPublisher::builder(topic, signing_key, secret)
-    .config(Config::builder().max_join_peer_count(8).build())
-    .secret_rotation(rotation_handle)
+let publisher = RecordPublisher::builder(topic_id, signing_key, initial_secret)
+    .config(
+        Config::builder()
+            .max_join_peer_count(std::num::NonZeroU32::new(8).expect("must be > 0"))
+            .build(),
+    )
     .build();
 ```
 
@@ -271,7 +274,7 @@ let config = Config::builder()
             .message_overlap_merge(MessageOverlapMergeConfig::Disabled)
             .build(),
     )
-    .build()
+    .build();
 ```
 
 **`RecordPublisher::builder()` for ergonomic construction**
@@ -282,9 +285,10 @@ let publisher = RecordPublisher::builder("my-topic", signing_key, b"secret")
     .config(config)
     .build();
 ```
+
 ## Todo's
 
-
+- [] Network degradation testing
 
 ## License
 

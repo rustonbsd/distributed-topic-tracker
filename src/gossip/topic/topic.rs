@@ -33,26 +33,27 @@ pub struct TopicId([u8; 32]);
 impl FromStr for TopicId {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Self::new(s.to_string()))
+    fn from_str(topic_name: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self::new(topic_name.to_string()))
     }
 }
 
 impl From<&str> for TopicId {
-    fn from(s: &str) -> Self {
-        Self::new(s.to_string())
+    fn from(topic_name: &str) -> Self {
+        Self::new(topic_name.to_string())
     }
 }
 
 impl From<String> for TopicId {
-    fn from(s: String) -> Self {
-        Self::new(s)
+    fn from(topic_name: String) -> Self {
+        Self::new(topic_name)
     }
 }
-
+/// Treats `bytes` as a topic *name* and SHA-512 hashes them.
+/// For a pre-computed 32-byte hash, use [`TopicId::from_hash`] instead.
 impl From<Vec<u8>> for TopicId {
-    fn from(bytes: Vec<u8>) -> Self {
-        Self::new(bytes)
+    fn from(topic_name: Vec<u8>) -> Self {
+        Self::new(topic_name)
     }
 }
 
@@ -60,14 +61,14 @@ impl TopicId {
     /// Create a new topic ID from a string.
     ///
     /// String is hashed with SHA512; the first 32 bytes produce the identifier.
-    pub fn new(raw: impl Into<Vec<u8>>) -> Self {
-        let mut raw_hash = sha2::Sha512::new();
-        raw_hash.update(raw.into());
+    pub fn new(topic_name: impl Into<Vec<u8>>) -> Self {
+        let mut topic_name_hash = sha2::Sha512::new();
+        topic_name_hash.update(topic_name.into());
 
         Self(
-            raw_hash.finalize()[..32]
+            topic_name_hash.finalize()[..32]
                 .try_into()
-                .expect("hashing 'raw' failed"),
+                .expect("hashing 'topic_name' failed"),
         )
     }
 
@@ -164,6 +165,7 @@ impl Topic {
                 if async_bootstrap {
                     tracing::debug!("Bootstrap completed, now spawning workers");
                     if let Err(err) = spawn_workers(api, config, cancel_token.clone()).await {
+                        cancel_token.cancel();
                         tracing::warn!("failed to spawn workers: {}", err);
                     }
                 }
@@ -177,6 +179,8 @@ impl Topic {
                 spawn_workers(Arc::downgrade(&api), config, cancel_token.clone()).await
             {
                 tracing::warn!("failed to spawn workers: {}", err);
+                cancel_token.cancel();
+                return Err(anyhow::anyhow!("failed to spawn workers: {}", err));
             }
             tracing::debug!("Topic: bootstrap completed");
         } else {
@@ -247,7 +251,6 @@ async fn spawn_workers(
             match api.upgrade() {
                 Some(api) => {
                     if let Err(err) = api.call(act!(actor => actor.start_publishing())).await {
-                        cancel_token.cancel();
                         return Err(anyhow::anyhow!("failed to start publisher: {err}"));
                     }
                 }
@@ -267,7 +270,6 @@ async fn spawn_workers(
             match api.upgrade() {
                 Some(api) => {
                     if let Err(err) = api.call(act!(actor => actor.start_bubble_merge())).await {
-                        cancel_token.cancel();
                         return Err(anyhow::anyhow!("failed to start bubble merge: {err}"));
                     }
                 }
@@ -290,7 +292,6 @@ async fn spawn_workers(
                         .call(act!(actor => actor.start_message_overlap_merge()))
                         .await
                     {
-                        cancel_token.cancel();
                         return Err(anyhow::anyhow!(
                             "failed to start message overlap merge: {err}"
                         ));
