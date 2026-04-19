@@ -133,7 +133,7 @@ fn test_encrypted_record_serialization() {
     let encrypted = record.encrypt(&encryption_key);
 
     // Test serialization roundtrip
-    let bytes = encrypted.to_bytes();
+    let bytes = encrypted.to_bytes().expect("record max size must be < EncryptedRecord::MAX_SIZE");
     let deserialized =
         EncryptedRecord::from_bytes(bytes).expect("failed to deserialize encrypted record");
 
@@ -254,10 +254,11 @@ async fn test_multiple_receivers_all_get_events() {
 
     let config = Config::builder()
         .publisher_config(PublisherConfig::Disabled)
-        .merge_config(MergeConfig::new(
-            BubbleMergeConfig::Disabled,
-            MessageOverlapMergeConfig::Disabled,
-        ))
+        .merge_config(MergeConfig::builder()
+            .bubble_merge(BubbleMergeConfig::Disabled)
+            .message_overlap_merge(MessageOverlapMergeConfig::Disabled)
+            .build()
+        )
         .build();
 
     let topic_id = TopicId::new("test-multi-receiver".to_string());

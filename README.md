@@ -14,13 +14,15 @@ Add dependencies to `Cargo.toml`:
 anyhow = "1"
 tokio = "1"
 rand = "0.9"
-iroh = "*"
-iroh-gossip = "*"
+ed25519-dalek = "3.0.0-pre.1"
+iroh = "^0.97"
+iroh-gossip = "^0.97"
 
 distributed-topic-tracker = "0.3"
 ```
 
 Basic iroh-gossip integration:
+
 ```rust,no_run
 use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
@@ -217,7 +219,7 @@ Config::builder()
             .join_confirmation_wait_time(Duration::from_millis(500))
             .build(),
     )
-    .max_join_peer_count(4)
+    .max_join_peer_count(std::num::NonZeroU32::new(4).expect("must be > 0"))
     .publisher_config(
         PublisherConfig::builder()
             .initial_delay(Duration::from_secs(10))
@@ -225,19 +227,25 @@ Config::builder()
             .max_jitter(Duration::from_secs(50))
             .build(),
     )
-    .merge_config(MergeConfig::new(
-        BubbleMergeConfig::builder()
-            .min_neighbors(4)
-            .base_interval(Duration::from_secs(60))
-            .max_jitter(Duration::from_secs(120))
-            .fail_topic_creation_on_merge_startup_failure(true)
+    .merge_config(
+        MergeConfig::builder()
+            .bubble_merge(
+                BubbleMergeConfig::builder()
+                    .min_neighbors(4)
+                    .base_interval(Duration::from_secs(60))
+                    .max_jitter(Duration::from_secs(120))
+                    .fail_topic_creation_on_merge_startup_failure(true)
+                    .build(),
+            )
+            .message_overlap_merge(
+                MessageOverlapMergeConfig::builder()
+                    .base_interval(Duration::from_secs(60))
+                    .max_jitter(Duration::from_secs(120))
+                    .fail_topic_creation_on_merge_startup_failure(true)
+                    .build(),
+            )
             .build(),
-        MessageOverlapMergeConfig::builder()
-            .base_interval(Duration::from_secs(60))
-            .max_jitter(Duration::from_secs(120))
-            .fail_topic_creation_on_merge_startup_failure(true)
-            .build(),
-    ))
+    )
     .timeouts(
         TimeoutConfig::builder()
             .join_peer_timeout(Duration::from_secs(5))

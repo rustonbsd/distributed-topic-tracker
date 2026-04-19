@@ -50,11 +50,9 @@ impl From<String> for TopicId {
     }
 }
 
-impl TryFrom<Vec<u8>> for TopicId {
-    type Error = anyhow::Error;
-
-    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(Self::new(String::from_utf8(bytes)?))
+impl From<Vec<u8>> for TopicId {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self::new(bytes)
     }
 }
 
@@ -62,9 +60,9 @@ impl TopicId {
     /// Create a new topic ID from a string.
     ///
     /// String is hashed with SHA512; the first 32 bytes produce the identifier.
-    pub fn new(raw: String) -> Self {
+    pub fn new(raw: impl Into<Vec<u8>>) -> Self {
         let mut raw_hash = sha2::Sha512::new();
-        raw_hash.update(raw.as_bytes());
+        raw_hash.update(raw.into());
 
         Self(
             raw_hash.finalize()[..32]
@@ -152,35 +150,29 @@ impl Topic {
         );
 
         let bootstrap_done = bootstrap.bootstrap().await?;
+        tokio::spawn({
+            let api = Arc::downgrade(&api);
+            let cancel_token = cancel_token.clone();
+            async move {
+                if let Err(err) = wait_for_bootstrap_and_spawn_workers(
+                    api,
+                    bootstrap_done,
+                    record_publisher.clone(),
+                    cancel_token.clone(),
+                )
+                .await
+                {
+                    tracing::error!("failed to start topic: {}", err);
+                }
+            }
+        });
+
         if !async_bootstrap {
             tracing::debug!("Topic: waiting for bootstrap to complete");
-
-            wait_for_bootstrap_and_spawn_workers(
-                Arc::downgrade(&api),
-                bootstrap_done,
-                record_publisher.clone(),
-                cancel_token.clone(),
-            )
-            .await?;
+            bootstrap.gossip_receiver().await?.joined().await?;
             tracing::debug!("Topic: bootstrap completed");
         } else {
             tracing::debug!("Topic: bootstrap started asynchronously");
-            tokio::spawn({
-                let api = Arc::downgrade(&api);
-                let cancel_token = cancel_token.clone();
-                async move {
-                    if let Err(err) = wait_for_bootstrap_and_spawn_workers(
-                        api,
-                        bootstrap_done,
-                        record_publisher.clone(),
-                        cancel_token.clone(),
-                    )
-                    .await
-                    {
-                        tracing::error!("failed to start topic: {}", err);
-                    }
-                }
-            });
         }
 
         Ok(Self { api, cancel_token })
@@ -310,30 +302,27 @@ async fn wait_for_bootstrap_and_spawn_workers(
 
 impl TopicActor {
     pub async fn start_publishing(&mut self) -> Result<()> {
-        if let PublisherConfig::Enabled {
-            initial_delay,
-            base_interval,
-            max_jitter,
-            fail_topic_creation_on_publishing_startup_failure,
-        } = self.record_publisher.config().publisher_config()
+        if let PublisherConfig::Enabled(config) = self.record_publisher.config().publisher_config()
         {
             tracing::debug!("TopicActor: initializing publisher");
-            let publisher = Publisher::new(
-                self.record_publisher.clone(),
-                self.bootstrap.gossip_receiver().await?,
-                self.cancel_token.clone(),
-                *initial_delay,
-                *base_interval,
-                *max_jitter,
-            );
+            let publisher = async {
+                Publisher::new(
+                    self.record_publisher.clone(),
+                    self.bootstrap.gossip_receiver().await?,
+                    self.cancel_token.clone(),
+                    config.initial_delay(),
+                    config.base_interval(),
+                    config.max_jitter(),
+                )
+            };
 
-            match publisher {
+            match publisher.await {
                 Ok(publisher) => {
                     self.publisher = Some(publisher);
                     tracing::debug!("TopicActor: publisher started");
-                },
+                }
                 Err(err) => {
-                    if *fail_topic_creation_on_publishing_startup_failure {
+                    if config.fail_topic_creation_on_publishing_startup_failure() {
                         return Err(anyhow::anyhow!("failed to start publisher: {}", err));
                     } else {
                         tracing::warn!(
@@ -348,32 +337,30 @@ impl TopicActor {
     }
 
     pub async fn start_bubble_merge(&mut self) -> Result<()> {
-        if let BubbleMergeConfig::Enabled {
-            base_interval,
-            max_jitter,
-            min_neighbors,
-            fail_topic_creation_on_merge_startup_failure,
-        } = self.record_publisher.config().merge_config().bubble_merge()
+        if let BubbleMergeConfig::Enabled(config) =
+            self.record_publisher.config().merge_config().bubble_merge()
         {
             tracing::debug!("TopicActor: initializing bubble merge");
-            let bubble_merge = BubbleMerge::new(
-                self.record_publisher.clone(),
-                self.bootstrap.gossip_sender().await?,
-                self.bootstrap.gossip_receiver().await?,
-                self.cancel_token.clone(),
-                self.record_publisher.config().max_join_peer_count().max(1),
-                *base_interval,
-                *max_jitter,
-                *min_neighbors,
-            );
+            let bubble_merge = async {
+                BubbleMerge::new(
+                    self.record_publisher.clone(),
+                    self.bootstrap.gossip_sender().await?,
+                    self.bootstrap.gossip_receiver().await?,
+                    self.cancel_token.clone(),
+                    self.record_publisher.config().max_join_peer_count().max(1),
+                    config.base_interval(),
+                    config.max_jitter(),
+                    config.min_neighbors(),
+                )
+            };
 
-            match bubble_merge {
+            match bubble_merge.await {
                 Ok(bubble_merge) => {
                     self.bubble_merge = Some(bubble_merge);
                     tracing::debug!("TopicActor: bubble merge started");
                 }
                 Err(err) => {
-                    if *fail_topic_creation_on_merge_startup_failure {
+                    if config.fail_topic_creation_on_merge_startup_failure() {
                         return Err(anyhow::anyhow!("failed to start bubble merge: {}", err));
                     } else {
                         tracing::warn!(
@@ -388,33 +375,32 @@ impl TopicActor {
     }
 
     pub async fn start_message_overlap_merge(&mut self) -> Result<()> {
-        if let MessageOverlapMergeConfig::Enabled {
-            base_interval,
-            max_jitter,
-            fail_topic_creation_on_merge_startup_failure,
-        } = self
+        if let MessageOverlapMergeConfig::Enabled(config) = self
             .record_publisher
             .config()
             .merge_config()
             .message_overlap_merge()
         {
             tracing::debug!("TopicActor: initializing message overlap merge");
-            let message_overlap_merge = MessageOverlapMerge::new(
-                self.record_publisher.clone(),
-                self.bootstrap.gossip_sender().await?,
-                self.bootstrap.gossip_receiver().await?,
-                self.cancel_token.clone(),
-                self.record_publisher.config().max_join_peer_count().max(1),
-                *base_interval,
-                *max_jitter,
-            );
-            match message_overlap_merge {
+            let message_overlap_merge = async {
+                MessageOverlapMerge::new(
+                    self.record_publisher.clone(),
+                    self.bootstrap.gossip_sender().await?,
+                    self.bootstrap.gossip_receiver().await?,
+                    self.cancel_token.clone(),
+                    self.record_publisher.config().max_join_peer_count().max(1),
+                    config.base_interval(),
+                    config.max_jitter(),
+                )
+            };
+
+            match message_overlap_merge.await {
                 Ok(message_overlap_merge) => {
                     self.message_overlap_merge = Some(message_overlap_merge);
                     tracing::debug!("TopicActor: message overlap merge started");
                 }
                 Err(err) => {
-                    if *fail_topic_creation_on_merge_startup_failure {
+                    if config.fail_topic_creation_on_merge_startup_failure() {
                         return Err(anyhow::anyhow!(
                             "failed to start message overlap merge: {}",
                             err

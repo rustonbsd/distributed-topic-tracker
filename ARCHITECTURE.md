@@ -202,7 +202,7 @@ Record (summary):
 - topic hash (32)
 - unix_minute (u64)
 - pub_key (publisher ed25519 public key)
-- content (serialized RecordContent: active_peers + last_message_hashes)
+- content (serialized GossipRecordContent: active_peers + last_message_hashes)
 - signature (64)
 
 EncryptedRecord:
@@ -217,7 +217,7 @@ classDiagram
     +topic: [u8;32]
     +unix_minute: u64
     +pub_key: [u8;32]
-    +content: RecordContent
+    +content: GossipRecordContent
     +signature: [u8;64]
   }
 

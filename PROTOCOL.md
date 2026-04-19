@@ -108,9 +108,9 @@ The bootstrap procedure is a continuous loop that attempts to discover and conne
    - If connected, exit bootstrap loop
 
 3. **Time Window Selection**
-   - If `check_last_minute_record_first_on_startup` is enabled and this is the first attempt: check previous unix minute (`unix_minute(-1)`)
-   - Otherwise: check current unix minute (`unix_minute(0)`)
-   - Both `unix_minute` and `unix_minute - 1` records are always fetched
+   - If `check_last_minute_record_first_on_startup` is enabled and this is the first attempt: check previous `unix minute-1` and `unix_minute-2`
+   - Otherwise: check current unix minute `unix_minute` and `unix_minute-1`
+   - Both `unix_minute` and `unix_minute-1` records are always fetched
 
 4. **Record Discovery**
    - Call `get_records()` for both `unix_minute - 1` and `unix_minute`:
