@@ -6,6 +6,7 @@ use actor_helper::{Handle, act, act_ok};
 use anyhow::Result;
 use iroh::EndpointId;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     GossipSender, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher,
@@ -118,7 +119,12 @@ impl BootstrapActor {
                     record_content,
                     record_publisher.signing_key(),
                 ) {
-                    publish_record_fire_and_forget(record_creator, record, None);
+                    publish_record_fire_and_forget(
+                        record_creator,
+                        record,
+                        None,
+                        cancel_token.clone(),
+                    );
                 }
             }
 
@@ -153,11 +159,17 @@ impl BootstrapActor {
 
                     // Unique, verified records for the unix minute
                     let mut records = record_publisher
-                        .get_records(current_unix_minute.saturating_sub(unix_minute_offset+1))
+                        .get_records(
+                            current_unix_minute.saturating_sub(unix_minute_offset + 1),
+                            cancel_token.clone(),
+                        )
                         .await
                         .unwrap_or_default();
                     let current_records = record_publisher
-                        .get_records(current_unix_minute.saturating_sub(unix_minute_offset))
+                        .get_records(
+                            current_unix_minute.saturating_sub(unix_minute_offset),
+                            cancel_token.clone(),
+                        )
                         .await
                         .unwrap_or_default();
                     records.extend(current_records.clone());
@@ -196,6 +208,7 @@ impl BootstrapActor {
                                     } else {
                                         None
                                     },
+                                    cancel_token.clone(),
                                 );
                             }
                         }
@@ -349,6 +362,7 @@ impl BootstrapActor {
                                     } else {
                                         None
                                     },
+                                    cancel_token.clone(),
                                 );
                             }
                         }
@@ -379,10 +393,11 @@ fn publish_record_fire_and_forget(
     record_publisher: RecordPublisher,
     record: Record,
     cached_records: Option<HashSet<Record>>,
+    cancel_token: CancellationToken,
 ) {
     tokio::spawn(async move {
         if let Err(err) = record_publisher
-            .publish_record_cached_records(record, cached_records)
+            .publish_record_cached_records(record, cached_records, cancel_token)
             .await
         {
             tracing::warn!("Failed to publish record: {:?}", err);

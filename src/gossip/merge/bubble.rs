@@ -108,8 +108,8 @@ impl BubbleMergeActor {
     // Cluster size as bubble indicator
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let mut records = self.record_publisher.get_records(unix_minute - 1).await?;
-        records.extend(self.record_publisher.get_records(unix_minute).await?);
+        let mut records = self.record_publisher.get_records(unix_minute - 1, self.cancel_token.clone()).await?;
+        records.extend(self.record_publisher.get_records(unix_minute, self.cancel_token.clone()).await?);
 
         let neighbors = self.gossip_receiver.neighbors().await?;
         tracing::debug!(
@@ -171,7 +171,7 @@ impl BubbleMergeActor {
                         Some(self.max_join_peers),
                     )
                     .await?;
-                
+
                 tracing::debug!("BubbleMerge: join_peers request sent");
             }
         } else {

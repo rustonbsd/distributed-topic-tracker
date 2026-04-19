@@ -109,7 +109,7 @@ sequenceDiagram
 ```
 
 Key points:
-- First iteration: optionally also check previous unix minute (`check_last_minute_record_first_on_startup`).
+- First iteration: optionally check older records first (`check_older_records_first_on_startup`).
 - Both `unix_minute` and `unix_minute - 1` records are always fetched.
 - Pacing avoids bursts and "bubbles."
 - Keep trying until joined.

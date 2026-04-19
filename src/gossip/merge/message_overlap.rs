@@ -98,8 +98,8 @@ impl MessageOverlapMergeActor {
 impl MessageOverlapMergeActor {
     async fn merge(&mut self) -> Result<()> {
         let unix_minute = crate::unix_minute(0);
-        let mut records = self.record_publisher.get_records(unix_minute - 1).await?;
-        records.extend(self.record_publisher.get_records(unix_minute).await?);
+        let mut records = self.record_publisher.get_records(unix_minute - 1, self.cancel_token.clone()).await?;
+        records.extend(self.record_publisher.get_records(unix_minute, self.cancel_token.clone()).await?);
 
         let local_hashes = self.gossip_receiver.last_message_hashes().await?;
         tracing::debug!(
@@ -170,7 +170,7 @@ impl MessageOverlapMergeActor {
                         "MessageOverlapMerge: attempting to join {} pub_keys with no overlapping messages",
                         pub_keys.len()
                     );
-                    
+
                     self.gossip_sender
                         .join_peers(
                             pub_keys.iter().cloned().collect::<Vec<_>>(),

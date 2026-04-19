@@ -94,7 +94,7 @@ The bootstrap procedure is a continuous loop that attempts to discover and conne
 - Final join confirmation wait: 500ms (default, configurable via `BootstrapConfig`)
 - Discovery poll interval: 2000ms (default, configurable via `BootstrapConfig`)
 - Publish on startup: true (default, configurable via `BootstrapConfig`)
-- Check last minute record first on startup: false (default, configurable via `BootstrapConfig`)
+- Check older records first on startup (`check_older_records_first_on_startup`): false (default, configurable via `BootstrapConfig`)
 
 ### Bootstrap Loop
 
