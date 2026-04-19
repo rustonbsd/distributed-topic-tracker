@@ -9,7 +9,7 @@ mod gossip;
 #[cfg(feature = "iroh-gossip")]
 pub use gossip::{
     AutoDiscoveryGossip, Bootstrap, BubbleMerge, GossipReceiver, GossipRecordContent, GossipSender,
-    MessageOverlapMerge, Publisher, Topic, TopicId,
+    MessageOverlapMerge, Publisher, Topic,
 };
 
 pub use config::{
@@ -19,7 +19,7 @@ pub use config::{
 };
 pub use crypto::{
     DefaultSecretRotation, EncryptedRecord, Record, RecordPublisher, RotationHandle,
-    SecretRotation, encryption_keypair, salt, signing_keypair,
+    SecretRotation, TopicId, encryption_keypair, salt, signing_keypair,
 };
 pub use dht::Dht;
 

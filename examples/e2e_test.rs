@@ -47,6 +47,7 @@ async fn main() -> Result<()> {
         while let Ok(event) = gossip_receiver.next().await {
             println!("event: {event:?}");
         }
+        println!("\nGossip receiver stream ended");
     });
 
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;

@@ -114,7 +114,7 @@ The E2E test confirms multiple nodes discover each other via DHT and join the sa
 
 ## Upgrading from 0.2 to 0.3
 
-**0.3** resolves several **stability issues** present in **0.2**. Circular and dangling references between actors caused resource leaks and **tasks could outlive topic and channel handles** (after `Topic`, `GossipSender` and `GossipReceiver` were dropped). Reduced unnecessary DHT writes and reads, adjusted timeouts, **reduced time to bootstrap**. All actor lifecycles are now token-gated, references now work as expected (if all dropped, all background tasks shut down gracefully), and many more improvements. If you find any issues, please report them.
+**0.3** resolves several **stability issues** present in **0.2**. Circular and dangling references between actors caused resource leaks and **tasks could outlive topic and channel handles** (after `Topic`, `GossipSender` and `GossipReceiver` were dropped). Reduced unnecessary DHT writes and reads, adjusted timeouts, **reduced time to bootstrap**. All actor lifecycles are now token-gated, references now work as expected (if all dropped, all background tasks shut down gracefully), resolved bugs in merge workers, and many more improvements. If you find any issues, please report them.
 
 **tldr: background tasks shutdown as expected, faster bootstrap time, better all around**
 
@@ -219,7 +219,7 @@ Config::builder()
         BootstrapConfig::builder()
             .max_bootstrap_records(5)
             .publish_record_on_startup(true)
-            .check_last_minute_record_first_on_startup(false)
+            .check_older_records_first_on_startup(false)
             .discovery_poll_interval(Duration::from_millis(2000))
             .no_peers_retry_interval(Duration::from_millis(1500))
             .per_peer_join_settle_time(Duration::from_millis(100))
@@ -288,7 +288,7 @@ let publisher = RecordPublisher::builder("my-topic", signing_key, b"secret")
 
 ## Todo's
 
-- [] Network degradation testing
+- [ ] Network degradation testing
 
 ## License
 

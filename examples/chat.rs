@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
         Config::builder()
             .bootstrap_config(
                 BootstrapConfig::builder()
-                    .check_last_minute_record_first_on_startup(false)
+                    .check_older_records_first_on_startup(false)
                     .build(),
             )
             .build(),
@@ -80,6 +80,7 @@ async fn main() -> Result<()> {
                 println!("\nJoined by {}", &peer.to_string()[0..8]);
             }
         }
+        println!("\nGossip receiver stream ended");
     });
 
     // Main input loop for sending messages

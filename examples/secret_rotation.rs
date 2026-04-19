@@ -77,6 +77,7 @@ async fn main() -> Result<()> {
                 println!("\nJoined by {}", &peer.to_string()[0..8]);
             }
         }
+        println!("\nGossip receiver stream ended");
     });
 
     // Main input loop for sending messages

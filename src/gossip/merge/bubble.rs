@@ -87,7 +87,7 @@ impl BubbleMergeActor {
                         tracing::warn!("BubbleMerge: error during merge: {:?}", e);
                     }
                     let jitter = if self.max_jitter > Duration::ZERO {
-                        Duration::from_micros(rand::random::<u64>() % self.max_jitter.as_micros() as u64)
+                        Duration::from_nanos(rand::random::<u64>() % self.max_jitter.as_nanos() as u64)
                     } else {
                         Duration::ZERO
                     };
@@ -158,18 +158,20 @@ impl BubbleMergeActor {
                 })
                 .collect::<HashSet<_>>();
 
-            tracing::debug!(
-                "BubbleMerge: found {} potential peers to join",
-                pub_keys.len()
-            );
 
             if !pub_keys.is_empty() {
+                tracing::debug!(
+                    "BubbleMerge: found {} potential peers to join",
+                    pub_keys.len()
+                );
+
                 self.gossip_sender
                     .join_peers(
                         pub_keys.iter().cloned().collect::<Vec<_>>(),
                         Some(self.max_join_peers),
                     )
                     .await?;
+                
                 tracing::debug!("BubbleMerge: join_peers request sent");
             }
         } else {

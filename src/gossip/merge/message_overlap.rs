@@ -78,7 +78,7 @@ impl MessageOverlapMergeActor {
                         tracing::warn!("MessageOverlapMerge: error during merge: {:?}", e);
                     }
                     let jitter = if self.max_jitter > Duration::ZERO {
-                        Duration::from_micros(rand::random::<u64>() % self.max_jitter.as_micros() as u64)
+                        Duration::from_nanos(rand::random::<u64>() % self.max_jitter.as_nanos() as u64)
                     } else {
                         Duration::ZERO
                     };
@@ -164,21 +164,24 @@ impl MessageOverlapMergeActor {
                     .filter(|pub_key| !active_neighbors.contains(pub_key))
                     .collect::<HashSet<_>>();
 
-                tracing::debug!(
-                    "MessageOverlapMerge: attempting to join {} pub_keys with no overlapping messages",
-                    pub_keys.len()
-                );
 
-                self.gossip_sender
-                    .join_peers(
-                        pub_keys.iter().cloned().collect::<Vec<_>>(),
-                        Some(self.max_join_peers),
-                    )
-                    .await?;
+                if !pub_keys.is_empty() {
+                    tracing::debug!(
+                        "MessageOverlapMerge: attempting to join {} pub_keys with no overlapping messages",
+                        pub_keys.len()
+                    );
+                    
+                    self.gossip_sender
+                        .join_peers(
+                            pub_keys.iter().cloned().collect::<Vec<_>>(),
+                            Some(self.max_join_peers),
+                        )
+                        .await?;
 
-                tracing::debug!(
-                    "MessageOverlapMerge: join_peers request sent for split-brain recovery"
-                );
+                    tracing::debug!(
+                        "MessageOverlapMerge: join_peers request sent for split-brain recovery"
+                    );
+                }
             }
         } else {
             tracing::debug!(

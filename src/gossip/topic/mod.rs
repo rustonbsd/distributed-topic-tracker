@@ -7,4 +7,4 @@ mod topic;
 
 pub use bootstrap::Bootstrap;
 pub use publisher::Publisher;
-pub use topic::{Topic, TopicId};
+pub use topic::Topic;

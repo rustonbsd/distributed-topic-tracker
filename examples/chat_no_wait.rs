@@ -6,9 +6,20 @@ use ed25519_dalek::SigningKey;
 
 // Imports from distributed-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, Config, RecordPublisher, TopicId};
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    
+    tracing_subscriber::fmt()
+        .with_thread_ids(true)
+        .with_ansi(true)
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("distributed_topic_tracker=debug")),
+        )
+        .init();
+
     // Generate a new random secret key
     let secret_key = SecretKey::generate(&mut rand::rng());
     let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
@@ -58,6 +69,7 @@ async fn main() -> Result<()> {
                 println!("\nJoined by {}", &peer.to_string()[0..8]);
             }
         }
+        println!("\nGossip receiver stream ended");
     });
 
     // Main input loop for sending messages

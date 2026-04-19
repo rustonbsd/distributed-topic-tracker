@@ -154,7 +154,7 @@ impl DhtActor {
             self.reset().await?;
 
             let jitter = if self.config.max_retry_jitter() > Duration::ZERO {
-                Duration::from_micros(rand::random::<u64>() % self.config.max_retry_jitter().as_micros() as u64)
+                Duration::from_nanos(rand::random::<u64>() % self.config.max_retry_jitter().as_nanos() as u64)
             } else {
                 Duration::ZERO
             };
