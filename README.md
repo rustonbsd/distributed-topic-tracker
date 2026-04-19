@@ -114,6 +114,10 @@ The E2E test confirms multiple nodes discover each other via DHT and join the sa
 
 ## Upgrading from 0.2 to 0.3
 
+**0.3** resolves several **stability issues** present in **0.2**. Circular and dangling references between actors caused resource leaks and **tasks could outlive topic and channel handles** (after `Topic`, `GossipSender` and `GossipReceiver` were dropped). Reduced unneccessary DHT writes and reads, adjusted timeouts, **reduced time to bootstrap**. All actor lifecycles are now token-gated, references now work as expected (if all dropped, all background tasks shut down gracefully), and many more improvements. If you find any issues, please report them.
+
+**tldr: background tasks shutdown as expected, faster bootstrap time, better all around**
+
 ### Breaking changes
 
 **`RecordTopic` removed, use `TopicId` instead**
@@ -259,14 +263,15 @@ Config::builder()
 **Disable merge strategies or publishing**
 
 ```rust,ignore
-// Run without any merge or publishing (bootstrap-only)
+// Run without any merge strategies (bootstrap-only)
 let config = Config::builder()
-    .publisher_config(PublisherConfig::Disabled)
-    .merge_config(MergeConfig::new(
-        BubbleMergeConfig::Disabled,
-        MessageOverlapMergeConfig::Disabled,
-    ))
-    .build();
+    .merge_config(
+        MergeConfig::builder()
+            .bubble_merge(BubbleMergeConfig::Disabled)
+            .message_overlap_merge(MessageOverlapMergeConfig::Disabled)
+            .build(),
+    )
+    .build()
 ```
 
 **`RecordPublisher::builder()` for ergonomic construction**
@@ -277,6 +282,9 @@ let publisher = RecordPublisher::builder("my-topic", signing_key, b"secret")
     .config(config)
     .build();
 ```
+## Todo's
+
+
 
 ## License
 

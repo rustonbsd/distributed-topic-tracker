@@ -112,7 +112,7 @@ impl DhtConfigBuilder {
         self
     }
 
-    /// Base delay between retries.
+    /// Base delay between retries. No-op if `interval` is `Duration::ZERO`.
     /// 
     /// If `base_retry_interval` is called only once with `Duration::ZERO`, default value prevails.
     /// If `base_retry_interval` is first called with a > `Duration::ZERO`, and then again with `Duration::ZERO`, the first set value is kept.
@@ -292,7 +292,7 @@ impl BubbleMergeConfigInner {
 }
 
 impl BubbleMergeConfigBuilder {
-    /// Base interval for bubble merge attempts. 
+    /// Base interval for bubble merge attempts. No-op if `interval` is `Duration::ZERO`.
     /// 
     /// If `base_interval` is called only once with `Duration::ZERO`, default value prevails.
     /// If `base_interval` is first called with a > `Duration::ZERO`, and then again with `Duration::ZERO`, the first set value is kept.
@@ -407,14 +407,16 @@ impl MessageOverlapMergeConfigInner {
 }
 
 impl MessageOverlapMergeConfigBuilder {
-    /// Base interval for message overlap merge attempts. 
+    /// Base interval for message overlap merge attempts. No-op if `interval` is `Duration::ZERO`.
     /// 
     /// If `base_interval` is called only once with `Duration::ZERO`, default value prevails.
     /// If `base_interval` is first called with a > `Duration::ZERO`, and then again with `Duration::ZERO`, the first set value is kept.
     /// 
     /// Default: 60s.
     pub fn base_interval(mut self, interval: Duration) -> Self {
-        self.config.base_interval = interval;
+        if interval > Duration::ZERO {
+            self.config.base_interval = interval;
+        }
         self
     }
 
@@ -529,7 +531,7 @@ impl PublisherConfigBuilder {
         self
     }
 
-    /// Base interval for publisher attempts. 
+    /// Base interval for publisher attempts. No-op if `interval` is `Duration::ZERO`.
     /// 
     /// If `base_interval` is called only once with `Duration::ZERO`, default value prevails.
     /// If `base_interval` is first called with a > `Duration::ZERO`, and then again with `Duration::ZERO`, the first set value is kept.
@@ -889,9 +891,7 @@ impl ConfigBuilder {
         self
     }
 
-    /// Publisher strategy config.
-    /// 
-    /// base_interval > `Duration::ZERO`
+    /// Publisher strategy config. 
     /// 
     /// Default: PublisherConfig::default().
     pub fn publisher_config(mut self, publisher_config: PublisherConfig) -> Self {
