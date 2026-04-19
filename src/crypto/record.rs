@@ -372,7 +372,7 @@ impl RecordPublisher {
         );
 
         let mut dedubed_records = HashMap::new();
-        for item in records_iter.clone() {
+        for item in records_iter {
             if let Ok(encrypted_record) = EncryptedRecord::from_bytes(item.value().to_vec())
                 && let Ok(record) = encrypted_record.decrypt(&encryption_key)
                 && record.verify(&self.topic_id.hash(), unix_minute).is_ok()

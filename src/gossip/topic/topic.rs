@@ -439,7 +439,7 @@ mod tests {
             .secret_key(secret_key.clone())
             .bind()
             .await
-            .expect("failed to bind edpoint");
+            .expect("failed to bind endpoint");
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
 
         let topic_id = crate::TopicId::new("my-iroh-gossip-topic".to_string());
