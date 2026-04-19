@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    BubbleMergeConfig, GossipSender, MessageOverlapMergeConfig,
+    BubbleMergeConfig, Config, GossipSender, MessageOverlapMergeConfig,
     config::PublisherConfig,
     gossip::{
         merge::{BubbleMerge, MessageOverlapMerge},
@@ -27,7 +27,7 @@ use tokio_util::sync::CancellationToken;
 /// ```ignore
 /// let topic_id = TopicId::new("chat-room-1".to_string());
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TopicId([u8; 32]);
 
 impl FromStr for TopicId {
@@ -150,19 +150,22 @@ impl Topic {
         );
 
         let bootstrap_done = bootstrap.bootstrap().await?;
+        let config = record_publisher.config().clone();
         tokio::spawn({
             let api = Arc::downgrade(&api);
+            let config = config.clone();
             let cancel_token = cancel_token.clone();
             async move {
-                if let Err(err) = wait_for_bootstrap_and_spawn_workers(
-                    api,
-                    bootstrap_done,
-                    record_publisher.clone(),
-                    cancel_token.clone(),
-                )
-                .await
-                {
-                    tracing::error!("failed to start topic: {}", err);
+                if let Err(err) = wait_for_bootstrap(bootstrap_done, cancel_token.clone()).await {
+                    tracing::warn!("bootstrap failed: {}", err);
+                    return;
+                }
+
+                if async_bootstrap {
+                    tracing::debug!("Bootstrap completed, now spawning workers");
+                    if let Err(err) = spawn_workers(api, config, cancel_token.clone()).await {
+                        tracing::warn!("failed to spawn workers: {}", err);
+                    }
                 }
             }
         });
@@ -170,6 +173,11 @@ impl Topic {
         if !async_bootstrap {
             tracing::debug!("Topic: waiting for bootstrap to complete");
             bootstrap.gossip_receiver().await?.joined().await?;
+            if let Err(err) =
+                spawn_workers(Arc::downgrade(&api), config, cancel_token.clone()).await
+            {
+                tracing::warn!("failed to spawn workers: {}", err);
+            }
             tracing::debug!("Topic: bootstrap completed");
         } else {
             tracing::debug!("Topic: bootstrap started asynchronously");
@@ -215,19 +223,26 @@ impl Topic {
     }
 }
 
-async fn wait_for_bootstrap_and_spawn_workers(
-    api: Weak<Handle<TopicActor, anyhow::Error>>,
+async fn wait_for_bootstrap(
     bootstrap_done: tokio::sync::oneshot::Receiver<Result<()>>,
-    record_publisher: crate::crypto::RecordPublisher,
     cancel_token: CancellationToken,
 ) -> Result<()> {
-    if let Ok(Ok(_)) = bootstrap_done.await
-        && !cancel_token.is_cancelled()
-    {
-        if matches!(
-            record_publisher.config().publisher_config(),
-            PublisherConfig::Enabled { .. }
-        ) {
+    if let Ok(Ok(_)) = bootstrap_done.await {
+        Ok(())
+    } else {
+        tracing::error!("Topic: bootstrap failed or cancelled, shutting down topic");
+        cancel_token.cancel();
+        Err(anyhow::anyhow!("bootstrap failed or cancelled"))
+    }
+}
+
+async fn spawn_workers(
+    api: Weak<Handle<TopicActor, anyhow::Error>>,
+    config: Config,
+    cancel_token: CancellationToken,
+) -> Result<()> {
+    if !cancel_token.is_cancelled() {
+        if matches!(config.publisher_config(), PublisherConfig::Enabled { .. }) {
             tracing::debug!("Topic: starting publisher");
             match api.upgrade() {
                 Some(api) => {
@@ -245,7 +260,7 @@ async fn wait_for_bootstrap_and_spawn_workers(
         }
 
         if matches!(
-            record_publisher.config().merge_config().bubble_merge(),
+            config.merge_config().bubble_merge(),
             BubbleMergeConfig::Enabled { .. }
         ) {
             tracing::debug!("Topic: starting bubble merge");
@@ -265,10 +280,7 @@ async fn wait_for_bootstrap_and_spawn_workers(
         }
 
         if matches!(
-            record_publisher
-                .config()
-                .merge_config()
-                .message_overlap_merge(),
+            config.merge_config().message_overlap_merge(),
             MessageOverlapMergeConfig::Enabled { .. }
         ) {
             tracing::debug!("Topic: starting message overlap merge");
@@ -291,12 +303,12 @@ async fn wait_for_bootstrap_and_spawn_workers(
                 }
             }
         }
-        tracing::debug!("Topic: fully initialized");
+        tracing::debug!("Topic: spawn_worker finished");
         Ok(())
     } else {
-        tracing::error!("Topic: bootstrap failed or cancelled, shutting down topic");
+        tracing::warn!("Topic: cancelled before workers could be spawned");
         cancel_token.cancel();
-        Err(anyhow::anyhow!("bootstrap failed or cancelled"))
+        Err(anyhow::anyhow!("cancelled before workers could be spawned"))
     }
 }
 
