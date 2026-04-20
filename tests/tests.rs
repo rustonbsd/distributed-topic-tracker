@@ -264,7 +264,7 @@ async fn test_multiple_receivers_all_get_events() {
     let topic_id = TopicId::new("test-multi-receiver".to_string());
 
     // Peer A
-    let secret_a = iroh::SecretKey::generate(&mut rand::rng());
+    let secret_a = iroh::SecretKey::generate();
     let signing_a = mainline::SigningKey::from_bytes(&secret_a.to_bytes());
     let endpoint_a = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
         .secret_key(secret_a)
@@ -291,7 +291,7 @@ async fn test_multiple_receivers_all_get_events() {
     let (sender_a, mut receiver_a) = topic_a.split().await.expect("failed to split topic A");
 
     // Peer B
-    let secret_b = iroh::SecretKey::generate(&mut rand::rng());
+    let secret_b = iroh::SecretKey::generate();
     let signing_b = mainline::SigningKey::from_bytes(&secret_b.to_bytes());
     let endpoint_b = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
         .secret_key(secret_b)

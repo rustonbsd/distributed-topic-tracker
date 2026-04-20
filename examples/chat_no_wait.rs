@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
         .init();
 
     // Generate a new random secret key
-    let secret_key = SecretKey::generate(&mut rand::rng());
+    let secret_key = SecretKey::generate();
     let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
 
     // Set up endpoint with discovery enabled

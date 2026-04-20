@@ -365,7 +365,7 @@ impl TopicActor {
 mod tests {
     #[tokio::test]
     async fn test_receiver_returns_none_after_shutdown() {
-        let secret_key = iroh::SecretKey::generate(&mut rand::rng());
+        let secret_key = iroh::SecretKey::generate();
         let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
         let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
             .secret_key(secret_key.clone())
@@ -433,7 +433,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_topic_full_shutdown_on_drop() {
-        let secret_key = iroh::SecretKey::generate(&mut rand::rng());
+        let secret_key = iroh::SecretKey::generate();
         let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
         let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
             .secret_key(secret_key.clone())
