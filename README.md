@@ -16,7 +16,7 @@ tokio = "1"
 rand = "0.9"
 ed25519-dalek = "3.0.0-pre.6"
 iroh = "0.98"
-iroh-gossip = "^0.98"
+iroh-gossip = "0.98"
 
 distributed-topic-tracker = "0.3"
 ```
