@@ -48,7 +48,10 @@ rand = { version = "0.10", default-features = false, features = [
     "std",
     "std_rng",
 ] }
-getrandom = { version = "0.4", default-features = false, features = ["std"] }
+getrandom = { version = "0.4", default-features = false, features = [
+    "std",
+    "sys_rng",
+] }
 actor-helper = { version = "0.3", features = ["tokio", "anyhow"] }
 postcard = "1"
 serde = { version = "1", default-features = false, features = ["std"] }
