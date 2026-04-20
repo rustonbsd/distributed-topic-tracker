@@ -14,9 +14,9 @@ Add dependencies to `Cargo.toml`:
 anyhow = "1"
 tokio = "1"
 rand = "0.9"
-ed25519-dalek = "3.0.0-pre.1"
-iroh = "^0.97"
-iroh-gossip = "^0.97"
+ed25519-dalek = "3.0.0-pre.6"
+iroh = "0.98"
+iroh-gossip = "^0.98"
 
 distributed-topic-tracker = "0.3"
 ```
@@ -35,7 +35,7 @@ use distributed_topic_tracker::{TopicId, AutoDiscoveryGossip, RecordPublisher, C
 #[tokio::main]
 async fn main() -> Result<()> {
     // Generate a new random secret key
-    let secret_key = SecretKey::generate(&mut rand::rng());
+    let secret_key = SecretKey::generate();
     let signing_key = SigningKey::from_bytes(&secret_key.to_bytes());
 
     // Set up endpoint with discovery enabled

@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+use getrandom::{SysRng, rand_core::UnwrapErr};
 
 use ed25519_dalek_hpke::{Ed25519hpkeDecryption, Ed25519hpkeEncryption};
 use serde::{Deserialize, Serialize};
@@ -563,7 +564,8 @@ impl Record {
 
     /// Encrypt record with HPKE.
     pub fn encrypt(&self, encryption_key: &ed25519_dalek::SigningKey) -> EncryptedRecord {
-        let one_time_key = ed25519_dalek::SigningKey::generate(&mut rand::rng());
+        let mut csprng = UnwrapErr(SysRng);
+        let one_time_key = ed25519_dalek::SigningKey::generate(&mut csprng);
         let p_key = one_time_key.verifying_key();
         let data_enc = p_key.encrypt(&self.to_bytes()).expect("encryption failed");
         let key_enc = encryption_key
