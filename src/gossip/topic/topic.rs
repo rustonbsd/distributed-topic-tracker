@@ -3,12 +3,10 @@
 use std::sync::{Arc, Weak};
 
 use crate::{
-    BubbleMergeConfig, Config, GossipSender, MessageOverlapMergeConfig,
-    config::PublisherConfig,
-    gossip::{
+    BubbleMergeConfig, Config, GossipReceiver, GossipSender, MessageOverlapMergeConfig, RecordPublisher, config::PublisherConfig, gossip::{
         merge::{BubbleMerge, MessageOverlapMerge},
         topic::{bootstrap::Bootstrap, publisher::Publisher},
-    },
+    }
 };
 use actor_helper::{Handle, act, act_ok};
 use anyhow::Result;
@@ -30,7 +28,7 @@ struct TopicActor {
     publisher: Option<Publisher>,
     bubble_merge: Option<BubbleMerge>,
     message_overlap_merge: Option<MessageOverlapMerge>,
-    record_publisher: crate::crypto::RecordPublisher,
+    record_publisher: RecordPublisher,
     cancel_token: CancellationToken,
 }
 
@@ -49,7 +47,7 @@ impl Topic {
     /// * `gossip` - Gossip instance for topic subscription
     /// * `async_bootstrap` - If false, awaits until bootstrap completes
     pub async fn new(
-        record_publisher: crate::crypto::RecordPublisher,
+        record_publisher: RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
         async_bootstrap: bool,
     ) -> Result<Self> {
@@ -122,13 +120,8 @@ impl Topic {
     }
 
     /// Split into sender and receiver for message exchange.
-    pub async fn split(&self) -> Result<(GossipSender, crate::gossip::receiver::GossipReceiver)> {
-        let topic_ref = Arc::new(self.clone());
-        let mut sender = self.gossip_sender().await?;
-        let mut receiver = self.gossip_receiver().await?;
-        sender._topic_keep_alive = Some(topic_ref.clone());
-        receiver._topic_keep_alive = Some(topic_ref);
-        Ok((sender, receiver))
+    pub async fn split(&self) -> Result<(GossipSender, GossipReceiver)> {
+        Ok((self.gossip_sender().await?, self.gossip_receiver().await?))
     }
 
     /// Get the gossip sender for this topic.
@@ -145,7 +138,7 @@ impl Topic {
     }
 
     /// Get the gossip receiver for this topic.
-    pub async fn gossip_receiver(&self) -> Result<crate::gossip::receiver::GossipReceiver> {
+    pub async fn gossip_receiver(&self) -> Result<GossipReceiver> {
         let topic_ref = Arc::new(self.clone());
         self.api
             .call(act!(actor => async move {
@@ -157,7 +150,7 @@ impl Topic {
     }
 
     /// Get the record publisher for this topic.
-    pub async fn record_creator(&self) -> Result<crate::crypto::RecordPublisher> {
+    pub async fn record_creator(&self) -> Result<RecordPublisher> {
         self.api
             .call(act_ok!(actor => async move { actor.record_publisher.clone() }))
             .await
@@ -376,6 +369,8 @@ impl TopicActor {
 
 #[cfg(test)]
 mod tests {
+    use crate::RecordPublisher;
+
     #[tokio::test]
     async fn test_receiver_returns_none_after_shutdown() {
         let secret_key = iroh::SecretKey::generate();
@@ -390,7 +385,7 @@ mod tests {
         let topic_id = crate::TopicId::new("shutdown-receiver-test".to_string());
         let initial_secret = b"my-initial-secret".to_vec();
 
-        let record_publisher = crate::RecordPublisher::new(
+        let record_publisher = RecordPublisher::new(
             topic_id.clone(),
             signing_key.clone(),
             None,
@@ -458,7 +453,7 @@ mod tests {
         let topic_id = crate::TopicId::new("my-iroh-gossip-topic".to_string());
         let initial_secret = b"my-initial-secret".to_vec();
 
-        let record_publisher = crate::RecordPublisher::new(
+        let record_publisher = RecordPublisher::new(
             topic_id.clone(),
             signing_key.clone(),
             None,
@@ -501,7 +496,7 @@ mod tests {
         let topic_id = crate::TopicId::new("my-iroh-gossip-topic-survives-drop-split".to_string());
         let initial_secret = b"my-initial-secret".to_vec();
 
-        let record_publisher = crate::RecordPublisher::new(
+        let record_publisher = RecordPublisher::new(
             topic_id.clone(),
             signing_key.clone(),
             None,
@@ -554,7 +549,7 @@ mod tests {
         );
         let initial_secret = b"my-initial-secret".to_vec();
 
-        let record_publisher = crate::RecordPublisher::new(
+        let record_publisher = RecordPublisher::new(
             topic_id.clone(),
             signing_key.clone(),
             None,

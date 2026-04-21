@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use tokio_util::sync::CancellationToken;
 
-use crate::Config;
+use crate::{Config, Dht, RotationHandle};
 
 /// Topic identifier derived from a string via SHA512 hashing.
 ///
@@ -131,14 +131,14 @@ impl RecordContent {
 /// Checks existing DHT record count before publishing to respect capacity limits.
 #[derive(Debug, Clone)]
 pub struct RecordPublisher {
-    dht: crate::dht::Dht,
+    dht: Dht,
 
-    config: crate::config::Config,
+    config: Config,
 
     topic_id: TopicId,
     pub_key: VerifyingKey,
     signing_key: SigningKey,
-    secret_rotation: Option<crate::crypto::keys::RotationHandle>,
+    secret_rotation: Option<RotationHandle>,
     initial_secret_hash: [u8; 32],
 }
 
@@ -147,20 +147,20 @@ pub struct RecordPublisher {
 pub struct RecordPublisherBuilder {
     topic_id: TopicId,
     signing_key: SigningKey,
-    secret_rotation: Option<crate::crypto::keys::RotationHandle>,
+    secret_rotation: Option<RotationHandle>,
     initial_secret: Vec<u8>,
-    config: crate::config::Config,
+    config: Config,
 }
 
 impl RecordPublisherBuilder {
     /// Set a custom secret rotation strategy.
-    pub fn secret_rotation(mut self, secret_rotation: crate::crypto::keys::RotationHandle) -> Self {
+    pub fn secret_rotation(mut self, secret_rotation: RotationHandle) -> Self {
         self.secret_rotation = Some(secret_rotation);
         self
     }
 
     /// Set the configuration.
-    pub fn config(mut self, config: crate::config::Config) -> Self {
+    pub fn config(mut self, config: Config) -> Self {
         self.config = config;
         self
     }
@@ -189,7 +189,7 @@ impl RecordPublisher {
             signing_key,
             secret_rotation: None,
             initial_secret: initial_secret.into(),
-            config: crate::config::Config::default(),
+            config: Config::default(),
         }
     }
 
@@ -205,9 +205,9 @@ impl RecordPublisher {
     pub fn new(
         topic_id: impl Into<TopicId>,
         signing_key: SigningKey,
-        secret_rotation: Option<crate::crypto::keys::RotationHandle>,
+        secret_rotation: Option<RotationHandle>,
         initial_secret: impl Into<Vec<u8>>,
-        config: crate::config::Config,
+        config: Config,
     ) -> Self {
         let mut initial_secret_hash = sha2::Sha512::new();
         initial_secret_hash.update(initial_secret.into());
@@ -216,7 +216,7 @@ impl RecordPublisher {
             .expect("hashing failed");
 
         Self {
-            dht: crate::dht::Dht::new(config.dht_config()),
+            dht: Dht::new(config.dht_config()),
             config,
             topic_id: topic_id.into(),
             pub_key: signing_key.verifying_key(),
@@ -261,7 +261,7 @@ impl RecordPublisher {
     }
 
     /// Get the secret rotation handle if set.
-    pub fn secret_rotation(&self) -> Option<crate::crypto::keys::RotationHandle> {
+    pub fn secret_rotation(&self) -> Option<RotationHandle> {
         self.secret_rotation.clone()
     }
 

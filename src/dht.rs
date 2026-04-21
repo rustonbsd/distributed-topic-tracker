@@ -25,7 +25,7 @@ pub struct Dht {
 #[derive(Debug, Default)]
 struct DhtActor {
     dht: Option<mainline::async_dht::AsyncDht>,
-    config: crate::config::DhtConfig,
+    config: DhtConfig,
 }
 
 impl Dht {
