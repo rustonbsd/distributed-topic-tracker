@@ -30,17 +30,19 @@ struct MessageOverlapMergeActor {
 
 impl MessageOverlapMerge {
     /// Create a new split-brain detector.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         record_publisher: RecordPublisher,
         gossip_sender: GossipSender,
         gossip_receiver: GossipReceiver,
         cancel_token: tokio_util::sync::CancellationToken,
         max_join_peers: usize,
+        initial_interval: Duration,
         base_interval: Duration,
         max_jitter: Duration,
     ) -> Result<Self> {
         let base_interval = base_interval.max(Duration::from_secs(1));
-        let mut ticker = tokio::time::interval(base_interval);
+        let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + initial_interval, base_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         let api = Handle::spawn_with(

@@ -42,12 +42,13 @@ impl BubbleMerge {
         gossip_receiver: GossipReceiver,
         cancel_token: tokio_util::sync::CancellationToken,
         max_join_peers: usize,
+        initial_interval: Duration,
         base_interval: Duration,
         max_jitter: Duration,
         min_neighbors: usize,
     ) -> Result<Self> {
         let base_interval = base_interval.max(Duration::from_secs(1));
-        let mut ticker = tokio::time::interval(base_interval);
+        let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + initial_interval, base_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         let api = Handle::spawn_with(

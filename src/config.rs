@@ -134,7 +134,7 @@ impl DhtConfigBuilder {
     }
 
     /// Timeout for DHT put operations. No-op if `timeout` is `Duration::ZERO`.
-    /// 
+    ///
     /// If `put_timeout` is called only once with `Duration::ZERO`, default value prevails.
     /// If `put_timeout` is first called with a > `Duration::ZERO`, and then again with `Duration::ZERO`, the first set value is kept.
     ///
@@ -147,7 +147,7 @@ impl DhtConfigBuilder {
     }
 
     /// Timeout for DHT get operations. No-op if `timeout` is `Duration::ZERO`.
-    /// 
+    ///
     /// If `get_timeout` is called only once with `Duration::ZERO`, default value prevails.
     /// If `get_timeout` is first called with a > `Duration::ZERO`, and then again with `Duration::ZERO`, the first set value is kept.
     ///
@@ -232,10 +232,12 @@ pub enum BubbleMergeConfig {
 
 #[derive(Debug, Clone)]
 pub struct BubbleMergeConfigInner {
+    initial_interval: Duration,
     base_interval: Duration,
     max_jitter: Duration,
     min_neighbors: usize,
     fail_topic_creation_on_merge_startup_failure: bool,
+    max_join_peers: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -252,10 +254,12 @@ impl Default for BubbleMergeConfig {
 impl Default for BubbleMergeConfigInner {
     fn default() -> Self {
         Self {
+            initial_interval: Duration::from_secs(30),
             base_interval: Duration::from_secs(60),
             max_jitter: Duration::from_secs(120),
             min_neighbors: 4,
             fail_topic_creation_on_merge_startup_failure: true,
+            max_join_peers: 2,
         }
     }
 }
@@ -270,8 +274,15 @@ impl BubbleMergeConfig {
 }
 
 impl BubbleMergeConfigInner {
+    /// Initial delay before starting bubble merge attempts.
+    ///
+    /// Default: 30s.
+    pub fn initial_interval(&self) -> Duration {
+        self.initial_interval
+    }
+
     /// Base interval for bubble merge attempts.
-    /// 
+    ///
     /// `base_interval` > Duration::ZERO
     ///
     /// Default: 60s.
@@ -301,9 +312,24 @@ impl BubbleMergeConfigInner {
     pub fn fail_topic_creation_on_merge_startup_failure(&self) -> bool {
         self.fail_topic_creation_on_merge_startup_failure
     }
+
+    /// Max number of peers to join during a bubble merge attempt.
+    ///
+    /// Default: 2.
+    pub fn max_join_peers(&self) -> usize {
+        self.max_join_peers
+    }
 }
 
 impl BubbleMergeConfigBuilder {
+    /// Initial delay before starting bubble merge attempts.
+    ///
+    /// Default: 30s.
+    pub fn initial_interval(mut self, interval: Duration) -> Self {
+        self.config.initial_interval = interval;
+        self
+    }
+
     /// Base interval for bubble merge attempts. No-op if `interval` is `Duration::ZERO`.
     ///
     /// If `base_interval` is called only once with `Duration::ZERO`, default value prevails.
@@ -343,6 +369,19 @@ impl BubbleMergeConfigBuilder {
         self
     }
 
+    /// Max number of peers to join during a bubble merge attempt. No-op if `max_join_peers` is zero.
+    ///
+    /// If `max_join_peers` is called only once with zero, default value prevails.
+    /// If `max_join_peers` is first called with a > zero, and then again with zero, the first set value is kept.
+    ///
+    /// Default: 2.
+    pub fn max_join_peers(mut self, max_join_peers: usize) -> Self {
+        if max_join_peers > 0 {
+            self.config.max_join_peers = max_join_peers;
+        }
+        self
+    }
+
     /// Build the `BubbleMergeConfig`.
     pub fn build(self) -> BubbleMergeConfig {
         BubbleMergeConfig::Enabled(self.config)
@@ -358,9 +397,11 @@ pub enum MessageOverlapMergeConfig {
 
 #[derive(Debug, Clone)]
 pub struct MessageOverlapMergeConfigInner {
+    initial_interval: Duration,
     base_interval: Duration,
     max_jitter: Duration,
     fail_topic_creation_on_merge_startup_failure: bool,
+    max_join_peers: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -371,9 +412,11 @@ pub struct MessageOverlapMergeConfigBuilder {
 impl Default for MessageOverlapMergeConfigInner {
     fn default() -> Self {
         Self {
+            initial_interval: Duration::from_secs(30),
             base_interval: Duration::from_secs(60),
             max_jitter: Duration::from_secs(120),
             fail_topic_creation_on_merge_startup_failure: true,
+            max_join_peers: 2,
         }
     }
 }
@@ -394,10 +437,17 @@ impl MessageOverlapMergeConfig {
 }
 
 impl MessageOverlapMergeConfigInner {
+    /// Initial delay before starting message overlap merge attempts.
+    ///
+    /// Default: 30s.
+    pub fn initial_interval(&self) -> Duration {
+        self.initial_interval
+    }
+
     /// Base interval for message overlap merge attempts.
     ///
     /// `base_interval` > Duration::ZERO
-    /// 
+    ///
     /// Default: 60s.
     pub fn base_interval(&self) -> Duration {
         self.base_interval
@@ -418,9 +468,24 @@ impl MessageOverlapMergeConfigInner {
     pub fn fail_topic_creation_on_merge_startup_failure(&self) -> bool {
         self.fail_topic_creation_on_merge_startup_failure
     }
+
+    /// Max number of peers to join during a message overlap merge attempt.
+    ///
+    /// Default: 2.
+    pub fn max_join_peers(&self) -> usize {
+        self.max_join_peers
+    }
 }
 
 impl MessageOverlapMergeConfigBuilder {
+    /// Initial delay before starting message overlap merge attempts.
+    ///
+    /// Default: 30s.
+    pub fn initial_interval(mut self, interval: Duration) -> Self {
+        self.config.initial_interval = interval;
+        self
+    }
+
     /// Base interval for message overlap merge attempts. No-op if `interval` is `Duration::ZERO`.
     ///
     /// If `base_interval` is called only once with `Duration::ZERO`, default value prevails.
@@ -449,6 +514,19 @@ impl MessageOverlapMergeConfigBuilder {
     /// Default: true.
     pub fn fail_topic_creation_on_merge_startup_failure(mut self, fail: bool) -> Self {
         self.config.fail_topic_creation_on_merge_startup_failure = fail;
+        self
+    }
+
+    /// Max number of peers to join during a message overlap merge attempt. No-op if `max_join_peers` is zero.
+    ///
+    /// If `max_join_peers` is called only once with zero, default value prevails.
+    /// If `max_join_peers` is first called with a > zero, and then again with zero, the first set value is kept.
+    ///
+    /// Default: 2.
+    pub fn max_join_peers(mut self, max_join_peers: usize) -> Self {
+        if max_join_peers > 0 {
+            self.config.max_join_peers = max_join_peers;
+        }
         self
     }
 
@@ -515,7 +593,7 @@ impl PublisherConfigInner {
     /// Base interval for publisher attempts.
     ///
     /// `base_interval` > Duration::ZERO
-    /// 
+    ///
     /// Default: 10s.
     pub fn base_interval(&self) -> Duration {
         self.base_interval
@@ -860,8 +938,8 @@ impl Config {
         &self.bootstrap_config
     }
 
-    /// Max peers to join simultaneously. 
-    /// 
+    /// Max peers to join simultaneously.
+    ///
     /// Minimum is 1.
     ///
     /// Default: 4.
