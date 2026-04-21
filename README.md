@@ -238,16 +238,20 @@ Config::builder()
             .bubble_merge(
                 BubbleMergeConfig::builder()
                     .min_neighbors(4)
+                    .initial_interval(Duration::from_secs(30))
                     .base_interval(Duration::from_secs(60))
                     .max_jitter(Duration::from_secs(120))
                     .fail_topic_creation_on_merge_startup_failure(true)
+                    .max_join_peers(2)
                     .build(),
             )
             .message_overlap_merge(
                 MessageOverlapMergeConfig::builder()
+                    .initial_interval(Duration::from_secs(30))
                     .base_interval(Duration::from_secs(60))
                     .max_jitter(Duration::from_secs(120))
                     .fail_topic_creation_on_merge_startup_failure(true)
+                    .max_join_peers(2)
                     .build(),
             )
             .build(),

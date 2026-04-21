@@ -133,15 +133,26 @@ impl Topic {
 
     /// Get the gossip sender for this topic.
     pub async fn gossip_sender(&self) -> Result<GossipSender> {
+        let topic_ref = Arc::new(self.clone());
         self.api
-            .call(act!(actor => actor.bootstrap.gossip_sender()))
+            .call(act!(actor => async move {
+                let mut sender = actor.bootstrap.gossip_sender().await?;
+                sender._topic_keep_alive = Some(topic_ref.clone());
+                Ok(sender)
+
+            }))
             .await
     }
 
     /// Get the gossip receiver for this topic.
     pub async fn gossip_receiver(&self) -> Result<crate::gossip::receiver::GossipReceiver> {
+        let topic_ref = Arc::new(self.clone());
         self.api
-            .call(act!(actor => actor.bootstrap.gossip_receiver()))
+            .call(act!(actor => async move {
+                let mut receiver = actor.bootstrap.gossip_receiver().await?;
+                receiver._topic_keep_alive = Some(topic_ref.clone());
+                Ok(receiver)
+            }))
             .await
     }
 
@@ -290,7 +301,8 @@ impl TopicActor {
                     self.bootstrap.gossip_sender().await?,
                     self.bootstrap.gossip_receiver().await?,
                     self.cancel_token.clone(),
-                    self.record_publisher.config().max_join_peer_count(),
+                    config.max_join_peers(),
+                    config.initial_interval(),
                     config.base_interval(),
                     config.max_jitter(),
                     config.min_neighbors(),
@@ -331,7 +343,8 @@ impl TopicActor {
                     self.bootstrap.gossip_sender().await?,
                     self.bootstrap.gossip_receiver().await?,
                     self.cancel_token.clone(),
-                    self.record_publisher.config().max_join_peer_count(),
+                    config.max_join_peers(),
+                    config.initial_interval(),
                     config.base_interval(),
                     config.max_jitter(),
                 )
@@ -472,5 +485,96 @@ mod tests {
             .expect("cancel token timed out");
 
         assert!(cancel_token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn test_topic_survives_topic_drop_split() {
+        let secret_key = iroh::SecretKey::generate();
+        let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+            .secret_key(secret_key.clone())
+            .bind()
+            .await
+            .expect("failed to bind endpoint");
+        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
+
+        let topic_id = crate::TopicId::new("my-iroh-gossip-topic-survives-drop-split".to_string());
+        let initial_secret = b"my-initial-secret".to_vec();
+
+        let record_publisher = crate::RecordPublisher::new(
+            topic_id.clone(),
+            signing_key.clone(),
+            None,
+            initial_secret,
+            crate::config::Config::default(),
+        );
+
+        let topic = crate::Topic::new(record_publisher, gossip.clone(), true)
+            .await
+            .expect("failed to create Topic");
+
+        let cancel_token = topic.cancel_token();
+        let (_sender, _receiver) = topic.split().await.expect("failed to split topic");
+
+        drop(topic);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), cancel_token.cancelled())
+                .await
+                .is_err()
+        );
+
+        assert!(!cancel_token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn test_topic_survives_topic_drop_manual_sender_receiver() {
+        let secret_key = iroh::SecretKey::generate();
+        let signing_key = mainline::SigningKey::from_bytes(&secret_key.to_bytes());
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+            .secret_key(secret_key.clone())
+            .bind()
+            .await
+            .expect("failed to bind endpoint");
+        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
+
+        let topic_id = crate::TopicId::new(
+            "my-iroh-gossip-topic-survives-drop-manual-sender-receiver".to_string(),
+        );
+        let initial_secret = b"my-initial-secret".to_vec();
+
+        let record_publisher = crate::RecordPublisher::new(
+            topic_id.clone(),
+            signing_key.clone(),
+            None,
+            initial_secret,
+            crate::config::Config::default(),
+        );
+
+        let topic = crate::Topic::new(record_publisher, gossip.clone(), true)
+            .await
+            .expect("failed to create Topic");
+
+        let cancel_token = topic.cancel_token();
+        let (_sender, _receiver) = (
+            topic
+                .gossip_sender()
+                .await
+                .expect("failed to get gossip sender"),
+            topic
+                .gossip_receiver()
+                .await
+                .expect("failed to get gossip receiver"),
+        );
+
+        drop(topic);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), cancel_token.cancelled())
+                .await
+                .is_err()
+        );
+
+        assert!(!cancel_token.is_cancelled());
     }
 }
