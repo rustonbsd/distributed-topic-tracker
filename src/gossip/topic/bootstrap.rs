@@ -9,10 +9,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    GossipSender, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher,
-    config::BootstrapConfig,
-    crypto::Record,
-    gossip::{GossipRecordContent, receiver::GossipReceiver},
+    GossipSender, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher, TimeoutConfig, config::BootstrapConfig, crypto::Record, gossip::{GossipRecordContent, receiver::GossipReceiver}
 };
 
 /// Manages the peer discovery and joining process.
@@ -26,7 +23,7 @@ pub struct Bootstrap {
 
 #[derive(Debug)]
 struct BootstrapActor {
-    record_publisher: crate::crypto::RecordPublisher,
+    record_publisher: RecordPublisher,
     gossip_sender: GossipSender,
     gossip_receiver: GossipReceiver,
     cancel_token: tokio_util::sync::CancellationToken,
@@ -36,10 +33,10 @@ struct BootstrapActor {
 impl Bootstrap {
     /// Create a new bootstrap process for a topic.
     pub async fn new(
-        record_publisher: crate::crypto::RecordPublisher,
+        record_publisher: RecordPublisher,
         gossip: iroh_gossip::net::Gossip,
         cancel_token: tokio_util::sync::CancellationToken,
-        timeout_config: crate::config::TimeoutConfig,
+        timeout_config: TimeoutConfig,
         bootstrap_config: BootstrapConfig,
     ) -> Result<Self> {
         let gossip_topic: iroh_gossip::api::GossipTopic = gossip

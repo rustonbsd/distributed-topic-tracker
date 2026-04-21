@@ -3,7 +3,7 @@
 use actor_helper::{Action, Handle, Receiver};
 use std::time::Duration;
 
-use crate::{GossipReceiver, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher};
+use crate::{GossipReceiver, GossipRecordContent, MAX_MESSAGE_HASHES, MAX_RECORD_PEERS, RecordPublisher};
 use anyhow::Result;
 
 /// Periodically publishes node state to DHT for peer discovery.
@@ -122,7 +122,7 @@ impl PublisherActor {
             last_message_hashes.len()
         );
 
-        let record_content = crate::gossip::GossipRecordContent {
+        let record_content = GossipRecordContent {
             active_peers: {
                 let mut peers = [Default::default(); MAX_RECORD_PEERS];
                 peers[..active_peers.len()].copy_from_slice(&active_peers);
