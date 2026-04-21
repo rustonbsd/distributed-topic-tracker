@@ -519,12 +519,23 @@ mod tests {
         drop(topic);
 
         assert!(
-            tokio::time::timeout(std::time::Duration::from_secs(5), cancel_token.cancelled())
+            tokio::time::timeout(std::time::Duration::from_secs(2), cancel_token.cancelled())
                 .await
                 .is_err()
         );
 
         assert!(!cancel_token.is_cancelled());
+
+        drop(_sender);
+        drop(_receiver);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), cancel_token.cancelled())
+                .await
+                .is_ok()
+        );
+
+        assert!(cancel_token.is_cancelled());
     }
 
     #[tokio::test]
@@ -576,5 +587,16 @@ mod tests {
         );
 
         assert!(!cancel_token.is_cancelled());
+
+        drop(_sender);
+        drop(_receiver);
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), cancel_token.cancelled())
+                .await
+                .is_ok()
+        );
+
+        assert!(cancel_token.is_cancelled());
     }
 }
