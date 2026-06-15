@@ -13,7 +13,7 @@ Add dependencies to `Cargo.toml`:
 [dependencies]
 anyhow = "1"
 tokio = "1"
-ed25519-dalek = "3.0.0-rc.7"
+ed25519-dalek = "3.0.0-rc.0"
 iroh = "1"
 iroh-gossip = "0.101"
 
