@@ -133,7 +133,9 @@ fn test_encrypted_record_serialization() {
     let encrypted = record.encrypt(&encryption_key);
 
     // Test serialization roundtrip
-    let bytes = encrypted.to_bytes().expect("record max size must be < EncryptedRecord::MAX_SIZE");
+    let bytes = encrypted
+        .to_bytes()
+        .expect("record max size must be < EncryptedRecord::MAX_SIZE");
     let deserialized =
         EncryptedRecord::from_bytes(bytes).expect("failed to deserialize encrypted record");
 
@@ -254,10 +256,11 @@ async fn test_multiple_receivers_all_get_events() {
 
     let config = Config::builder()
         .publisher_config(PublisherConfig::Disabled)
-        .merge_config(MergeConfig::builder()
-            .bubble_merge(BubbleMergeConfig::Disabled)
-            .message_overlap_merge(MessageOverlapMergeConfig::Disabled)
-            .build()
+        .merge_config(
+            MergeConfig::builder()
+                .bubble_merge(BubbleMergeConfig::Disabled)
+                .message_overlap_merge(MessageOverlapMergeConfig::Disabled)
+                .build(),
         )
         .build();
 
@@ -382,8 +385,8 @@ async fn test_multiple_receivers_all_get_events() {
     for (i, handle) in handles.into_iter().enumerate() {
         let received = tokio::time::timeout(std::time::Duration::from_secs(60), handle)
             .await
-            .expect(&format!("receiver {i} timed out"))
-            .expect(&format!("receiver {i} panicked"));
+            .expect("receiver {i} timed out")
+            .expect("receiver {i} panicked");
 
         assert_eq!(
             received.len(),

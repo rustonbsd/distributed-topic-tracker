@@ -7,7 +7,7 @@ repository = "https://github.com/rustonbsd/distributed-topic-tracker"
 readme = "README.md"
 keywords = ["networking"]
 categories = ["network-programming"]
-version = "0.3.4"
+version = "0.3.5"
 edition = "2024"
 
 [features]
@@ -16,10 +16,10 @@ iroh-gossip = ["dep:iroh", "dep:iroh-gossip"]
 
 
 [dependencies]
-sha2 = { version = "0.10", default-features = false }
+sha2 = { version = "0.11.0", default-features = false }
 anyhow = { version = "1", default-features = false, features = ["std"] }
 
-ed25519-dalek = { version = "3.0.0-pre.6", default-features = false, features = [
+ed25519-dalek = { version = "3.0.0-rc.0", default-features = false, features = [
     "rand_core",
 ] }
 ed25519-dalek-hpke = { version = "0.0.5" }
@@ -32,10 +32,10 @@ tokio = { version = "1", default-features = false, features = [
 ] }
 tokio-util = { version = "0.7", default-features = false }
 
-iroh = { version = "1.0.0-rc.1", optional = true, default-features = false, features = [
+iroh = { version = "1", optional = true, default-features = false, features = [
     "tls-ring",
 ] }
-iroh-gossip = { version = "0.100", optional = true, default-features = false, features = [
+iroh-gossip = { version = "0.101", optional = true, default-features = false, features = [
     "net",
 ] }
 
@@ -43,7 +43,7 @@ futures-lite = "2"
 
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-mainline = { version = "6", default-features = false, features = ["async"] }
+mainline = { version = "7", default-features = false, features = ["async"] }
 rand = { version = "0.10", default-features = false, features = [
     "std",
     "std_rng",
@@ -66,7 +66,6 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 [[test]]
 name = "tests"
 
-# only build examples if the "iroh-gossip" feature is enabled
 [[example]]
 name = "chat"
 required-features = ["iroh-gossip"]
