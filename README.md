@@ -13,9 +13,9 @@ Add dependencies to `Cargo.toml`:
 [dependencies]
 anyhow = "1"
 tokio = "1"
-ed25519-dalek = "3.0.0-pre.6"
-iroh = "0.98"
-iroh-gossip = "0.98"
+ed25519-dalek = "3.0.0-rc.7"
+iroh = "1"
+iroh-gossip = "0.101"
 
 distributed-topic-tracker = "0.3"
 ```
