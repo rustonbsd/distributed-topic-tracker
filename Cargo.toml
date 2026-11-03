@@ -7,7 +7,7 @@ repository = "https://github.com/rustonbsd/distributed-topic-tracker"
 readme = "README.md"
 keywords = ["networking"]
 categories = ["network-programming"]
-version = "0.3.5"
+version = "0.3.6"
 edition = "2024"
 
 [features]
@@ -16,13 +16,13 @@ iroh-gossip = ["dep:iroh", "dep:iroh-gossip"]
 
 
 [dependencies]
-sha2 = { version = "0.11.0", default-features = false }
+sha2 = { version = "0.11", default-features = false }
 anyhow = { version = "1", default-features = false, features = ["std"] }
 
-ed25519-dalek = { version = "3.0.0-rc.0", default-features = false, features = [
+ed25519-dalek = { version = "3.0.0", default-features = false, features = [
     "rand_core",
 ] }
-ed25519-dalek-hpke = { version = "0.0.5" }
+ed25519-dalek-hpke = { version = "0.0.6" }
 
 tokio = { version = "1", default-features = false, features = [
     "macros",
@@ -43,7 +43,7 @@ futures-lite = "2"
 
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-mainline = { version = "7", default-features = false, features = ["async"] }
+mainline = { version = "8", default-features = false, features = ["async"] }
 rand = { version = "0.10", default-features = false, features = [
     "std",
     "std_rng",
