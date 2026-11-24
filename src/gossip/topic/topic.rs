@@ -3,10 +3,13 @@
 use std::sync::{Arc, Weak};
 
 use crate::{
-    BubbleMergeConfig, Config, GossipReceiver, GossipSender, MessageOverlapMergeConfig, RecordPublisher, config::PublisherConfig, gossip::{
+    BubbleMergeConfig, Config, GossipReceiver, GossipSender, MessageOverlapMergeConfig,
+    RecordPublisher,
+    config::PublisherConfig,
+    gossip::{
         merge::{BubbleMerge, MessageOverlapMerge},
         topic::{bootstrap::Bootstrap, publisher::Publisher},
-    }
+    },
 };
 use actor_helper::{Handle, act, act_ok};
 use anyhow::Result;
@@ -48,7 +51,7 @@ impl Topic {
     /// * `async_bootstrap` - If false, awaits until bootstrap completes
     pub async fn new(
         record_publisher: RecordPublisher,
-        gossip: iroh_gossip::net::Gossip,
+        gossip: iroh_gossip::Gossip,
         async_bootstrap: bool,
     ) -> Result<Self> {
         tracing::debug!(
@@ -380,7 +383,7 @@ mod tests {
             .bind()
             .await
             .expect("failed to bind endpoint");
-        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
+        let gossip = iroh_gossip::Gossip::builder().spawn(endpoint.clone());
 
         let topic_id = crate::TopicId::new("shutdown-receiver-test".to_string());
         let initial_secret = b"my-initial-secret".to_vec();
@@ -448,7 +451,7 @@ mod tests {
             .bind()
             .await
             .expect("failed to bind endpoint");
-        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
+        let gossip = iroh_gossip::Gossip::builder().spawn(endpoint.clone());
 
         let topic_id = crate::TopicId::new("my-iroh-gossip-topic".to_string());
         let initial_secret = b"my-initial-secret".to_vec();
@@ -491,7 +494,7 @@ mod tests {
             .bind()
             .await
             .expect("failed to bind endpoint");
-        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
+        let gossip = iroh_gossip::Gossip::builder().spawn(endpoint.clone());
 
         let topic_id = crate::TopicId::new("my-iroh-gossip-topic-survives-drop-split".to_string());
         let initial_secret = b"my-initial-secret".to_vec();
@@ -542,7 +545,7 @@ mod tests {
             .bind()
             .await
             .expect("failed to bind endpoint");
-        let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
+        let gossip = iroh_gossip::Gossip::builder().spawn(endpoint.clone());
 
         let topic_id = crate::TopicId::new(
             "my-iroh-gossip-topic-survives-drop-manual-sender-receiver".to_string(),

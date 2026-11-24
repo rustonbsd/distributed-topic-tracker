@@ -2,7 +2,7 @@ use anyhow::Result;
 use iroh::{
     Endpoint, SecretKey,
 };
-use iroh_gossip::net::Gossip;
+use iroh_gossip::Gossip;
 
 // Imports from distributed-topic-tracker
 use distributed_topic_tracker::{AutoDiscoveryGossip, Config, RecordPublisher, TopicId};

@@ -22,8 +22,8 @@ use crate::{MAX_MESSAGE_HASHES, Topic};
 pub struct GossipReceiver {
     api: Handle<GossipReceiverActor, anyhow::Error>,
     pub(crate) _topic_keep_alive: Option<Arc<Topic>>,
-    _next_channel_sender: tokio::sync::broadcast::WeakSender<Option<iroh_gossip::api::Event>>,
-    next_channel_receiver: tokio::sync::broadcast::Receiver<Option<iroh_gossip::api::Event>>,
+    _next_channel_sender: tokio::sync::broadcast::WeakSender<Option<iroh_gossip::Event>>,
+    next_channel_receiver: tokio::sync::broadcast::Receiver<Option<iroh_gossip::Event>>,
     _join_channel_sender: tokio::sync::broadcast::WeakSender<Option<()>>,
     join_channel_receiver: tokio::sync::broadcast::Receiver<Option<()>>,
 }
@@ -60,10 +60,10 @@ impl Clone for GossipReceiver {
 /// Internal actor for gossip receive operations.
 #[derive(Debug)]
 pub struct GossipReceiverActor {
-    gossip_receiver: iroh_gossip::api::GossipReceiver,
+    gossip_receiver: iroh_gossip::GossipReceiver,
     last_message_hashes: VecDeque<[u8; 32]>,
     cancel_token: tokio_util::sync::CancellationToken,
-    next_channel_sender: tokio::sync::broadcast::Sender<Option<iroh_gossip::api::Event>>,
+    next_channel_sender: tokio::sync::broadcast::Sender<Option<iroh_gossip::Event>>,
     join_channel_sender: tokio::sync::broadcast::Sender<Option<()>>,
 }
 
@@ -99,7 +99,7 @@ impl Display for ChannelError {
 impl GossipReceiver {
     /// Create a new gossip receiver from an iroh topic receiver.
     pub fn new(
-        gossip_receiver: iroh_gossip::api::GossipReceiver,
+        gossip_receiver: iroh_gossip::GossipReceiver,
         cancel_token: tokio_util::sync::CancellationToken,
     ) -> Self {
         let (next_tx, next_rx) = tokio::sync::broadcast::channel(64);
@@ -143,7 +143,7 @@ impl GossipReceiver {
     }
 
     /// Receive the next gossip event.
-    pub async fn next(&mut self) -> Result<iroh_gossip::api::Event, ChannelError> {
+    pub async fn next(&mut self) -> Result<iroh_gossip::Event, ChannelError> {
         match self.next_channel_receiver.recv().await {
             Ok(event) => match event {
                 Some(event) => Ok(event),
@@ -206,7 +206,7 @@ impl GossipReceiverActor {
                         }
                         Some(Ok(ref event)) => {
                             match event {
-                                iroh_gossip::api::Event::Received(msg) => {
+                                iroh_gossip::Event::Received(msg) => {
                                     tracing::debug!("GossipReceiver: received message from {:?}", msg.delivered_from);
                                     let mut hash = sha2::Sha512::new();
                                     hash.update(&msg.content);
@@ -218,16 +218,17 @@ impl GossipReceiverActor {
                                     }
                                     self.join_channel_sender.send(Some(())).ok();
                                 }
-                                iroh_gossip::api::Event::NeighborUp(pub_key) => {
+                                iroh_gossip::Event::NeighborUp(pub_key) => {
                                     tracing::debug!("GossipReceiver: neighbor UP: {}", pub_key);
                                     self.join_channel_sender.send(Some(())).ok();
                                 }
-                                iroh_gossip::api::Event::NeighborDown(pub_key) => {
+                                iroh_gossip::Event::NeighborDown(pub_key) => {
                                     tracing::debug!("GossipReceiver: neighbor DOWN: {}", pub_key);
                                 }
-                                iroh_gossip::api::Event::Lagged => {
+                                iroh_gossip::Event::Lagged => {
                                     tracing::debug!("GossipReceiver: event stream lagged");
                                 }
+                                _future_events => tracing::warn!("GossipReceiver: unhandled event type: {:?}", _future_events),
                             };
                             event.clone()
                         }
