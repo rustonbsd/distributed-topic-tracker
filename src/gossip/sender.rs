@@ -23,12 +23,12 @@ pub struct GossipSender {
 /// Internal actor for gossip send operations.
 #[derive(Debug)]
 pub struct GossipSenderActor {
-    gossip_sender: iroh_gossip::api::GossipSender,
+    gossip_sender: iroh_gossip::GossipSender,
 }
 
 impl GossipSender {
     /// Create a new gossip sender from an iroh topic sender.
-    pub fn new(gossip_sender: iroh_gossip::api::GossipSender, timeout_config: TimeoutConfig) -> Self {
+    pub fn new(gossip_sender: iroh_gossip::GossipSender, timeout_config: TimeoutConfig) -> Self {
         let api = Handle::spawn(GossipSenderActor { gossip_sender }).0;
 
         Self {

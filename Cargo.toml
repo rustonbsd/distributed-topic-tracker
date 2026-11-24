@@ -35,7 +35,7 @@ tokio-util = { version = "0.7", default-features = false }
 iroh = { version = "1", optional = true, default-features = false, features = [
     "tls-ring",
 ] }
-iroh-gossip = { version = "0.101", optional = true, default-features = false, features = [
+iroh-gossip = { version = "0.103", optional = true, default-features = false, features = [
     "net",
 ] }
 

@@ -274,7 +274,7 @@ async fn test_multiple_receivers_all_get_events() {
         .bind()
         .await
         .expect("failed to bind endpoint A");
-    let gossip_a = iroh_gossip::net::Gossip::builder().spawn(endpoint_a.clone());
+    let gossip_a = iroh_gossip::Gossip::builder().spawn(endpoint_a.clone());
     let _router_a = iroh::protocol::Router::builder(endpoint_a.clone())
         .accept(iroh_gossip::ALPN, gossip_a.clone())
         .spawn();
@@ -301,7 +301,7 @@ async fn test_multiple_receivers_all_get_events() {
         .bind()
         .await
         .expect("failed to bind endpoint B");
-    let gossip_b = iroh_gossip::net::Gossip::builder().spawn(endpoint_b.clone());
+    let gossip_b = iroh_gossip::Gossip::builder().spawn(endpoint_b.clone());
     let _router_b = iroh::protocol::Router::builder(endpoint_b.clone())
         .accept(iroh_gossip::ALPN, gossip_b.clone())
         .spawn();
@@ -357,7 +357,7 @@ async fn test_multiple_receivers_all_get_events() {
                 while received.len() < MSG_COUNT {
                     match tokio::time::timeout(std::time::Duration::from_secs(30), rx.next()).await
                     {
-                        Ok(Ok(iroh_gossip::api::Event::Received(msg))) => {
+                        Ok(Ok(iroh_gossip::Event::Received(msg))) => {
                             received.push(msg.content.to_vec());
                         }
                         Ok(Ok(_)) => continue,

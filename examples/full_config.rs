@@ -3,7 +3,7 @@ use std::time::Duration;
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
 use iroh::{Endpoint, SecretKey};
-use iroh_gossip::net::Gossip;
+use iroh_gossip::Gossip;
 
 // Imports from distributed-topic-tracker
 use distributed_topic_tracker::{

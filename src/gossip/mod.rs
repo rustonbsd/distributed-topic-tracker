@@ -51,7 +51,7 @@ pub trait AutoDiscoveryGossip {
     ) -> anyhow::Result<Topic>;
 }
 
-impl AutoDiscoveryGossip for iroh_gossip::net::Gossip {
+impl AutoDiscoveryGossip for iroh_gossip::Gossip {
     async fn subscribe_and_join_with_auto_discovery(
         &self,
         record_publisher: RecordPublisher,

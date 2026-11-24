@@ -1,6 +1,6 @@
 use anyhow::Result;
 use iroh::{Endpoint, SecretKey};
-use iroh_gossip::{api::Event, net::Gossip};
+use iroh_gossip::{Event, Gossip};
 
 use ed25519_dalek::SigningKey;
 
