@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
         .bind()
         .await?;
 
-    // Initialize gossip with auto-discovery
+    // Initialize gossip
     let gossip = Gossip::builder().spawn(endpoint.clone());
 
     // Set up protocol router
@@ -26,9 +26,9 @@ async fn main() -> Result<()> {
         .accept(iroh_gossip::ALPN, gossip.clone())
         .spawn();
 
+    // Distributed Topic Tracker
     let topic_id = TopicId::new("my-iroh-gossip-topic".to_string());
     let initial_secret = b"my-initial-secret".to_vec();
-
     let record_publisher = RecordPublisher::new(
         topic_id.clone(),
         signing_key.clone(),
@@ -37,14 +37,14 @@ async fn main() -> Result<()> {
         Config::default(),
     );
 
+    // Use new `subscribe_and_join_with_auto_discovery` on Gossip
     let topic = gossip
         .subscribe_and_join_with_auto_discovery(record_publisher)
         .await?;
 
     println!("[joined topic]");
 
-    // Do something with the gossip topic
-    // (bonus: GossipSender and GossipReceiver are safely clonable)
+    // Work with the topic (GossipSender/Receiver are clonable)
     let (_gossip_sender, _gossip_receiver) = topic.split().await?;
 
     Ok(())
