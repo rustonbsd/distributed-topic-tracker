@@ -13,9 +13,9 @@ Add dependencies to `Cargo.toml`:
 [dependencies]
 anyhow = "1"
 tokio = "1"
-ed25519-dalek = "3.0.0"
+ed25519-dalek = "3"
 iroh = "1"
-iroh-gossip = "0.101"
+iroh-gossip = "0.103"
 
 distributed-topic-tracker = "0.3"
 ```
@@ -24,12 +24,12 @@ Basic iroh-gossip integration:
 
 ```rust,no_run
 use anyhow::Result;
+use ed25519_dalek::SigningKey;
 use iroh::{Endpoint, SecretKey};
 use iroh_gossip::Gossip;
-use ed25519_dalek::SigningKey;
 
 // Imports from distributed-topic-tracker
-use distributed_topic_tracker::{TopicId, AutoDiscoveryGossip, RecordPublisher, Config};
+use distributed_topic_tracker::{AutoDiscoveryGossip, Config, RecordPublisher, TopicId};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
 
     // Work with the topic (GossipSender/Receiver are clonable)
     let (_gossip_sender, _gossip_receiver) = topic.split().await?;
-    
+
     Ok(())
 }
 ```
